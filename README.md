@@ -32,7 +32,7 @@
 **✅ 完美支持 Cloudflare Pages**  
 **✅ 完美支持 Cloudflare snippets**  
 
-**这是一个基于 Cloudflare Workers 的 VLESS 节点脚本。**
+
 
 **集成了 Web 管理后台、订阅转换.**
 
