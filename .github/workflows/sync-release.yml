@@ -23,7 +23,7 @@ jobs:
       - name: 同步上游代码及标签
         env:
           # 【修改这里】换成你想要搬运的作者和项目名
-          UPSTREAM_REPO: "stallTCP1.3V1" 
+          UPSTREAM_REPO: "xtgm/stallTCP1.32V2" 
           GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
         run: |
           git remote remove upstream || true
@@ -43,7 +43,7 @@ jobs:
       - name: 检查并搬运 Release 附件
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT }}
-          UPSTREAM_REPO: "stallTCP1.3V1" # 【同步修改这里】
+          UPSTREAM_REPO: "xtgm/stallTCP1.32V2" # 【同步修改这里】
         run: |
           LATEST_TAG=$(gh release view --repo $UPSTREAM_REPO --json tagName --template '{{.tagName}}')
           if gh release view $LATEST_TAG >/dev/null 2>&1; then
