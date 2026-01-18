@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.SYNC_PAT }} # 确保你已经在仓库 Settings 里添加了 SYNC_PAT
+          token: ${{ secrets.SYNC_PAT }} # 确保已在该仓库 Settings 添加 SYNC_PAT
 
       - name: 配置 Git 环境
         run: |
@@ -22,14 +22,14 @@ jobs:
 
       - name: 同步上游代码及标签
         env:
-          # 【修正点】加上了原作者的名字 kusumara
-          UPSTREAM_REPO: "kusumara/stallTCP1.3V1" 
+          # 【修正点】根据您的 fork 信息填写的上游地址
+          UPSTREAM_REPO: "xtgm/stallTCP1.32V2" 
           GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
         run: |
           git remote remove upstream || true
           git remote add upstream https://github.com/$UPSTREAM_REPO.git
           
-          # 自动检测原厂的主分支名
+          # 自动检测上游主分支
           UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d' ' -f5)
           echo "发现上游主分支: $UPSTREAM_BRANCH"
           
@@ -41,23 +41,26 @@ jobs:
           git fetch upstream --tags
           git push origin --tags --force
 
-      - name: 检查并搬运 Release 附件
+      - name: 检查并搬运 Release 附件 (带容错)
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT }}
-          UPSTREAM_REPO: "kusumara/stallTCP1.3V1" # 【修正点】同步修改
+          UPSTREAM_REPO: "xtgm/stallTCP1.32V2"
         run: |
-          # 检查原厂是否有发布版
-          LATEST_TAG=$(gh release view --repo $UPSTREAM_REPO --json tagName --template '{{.tagName}}')
+          # 尝试获取最新 Tag，如果失败则说明原厂没有 Release
+          LATEST_TAG=$(gh release view --repo $UPSTREAM_REPO --json tagName --template '{{.tagName}}' 2>/dev/null || echo "")
           
+          if [ -z "$LATEST_TAG" ]; then
+            echo "上游项目目前没有发布过 Release 或 Tag，跳过附件搬运。"
+            exit 0
+          fi
+
           if gh release view $LATEST_TAG >/dev/null 2>&1; then
-            echo "正在搬运版本 $LATEST_TAG 的附件..."
+            echo "版本 $LATEST_TAG 已存在，跳过。"
+          else
+            echo "正在同步版本 $LATEST_TAG 的附件..."
             mkdir -p ./downloads
             gh release download $LATEST_TAG --repo $UPSTREAM_REPO --dir ./downloads
-
             TITLE=$(gh release view $LATEST_TAG --repo $UPSTREAM_REPO --json name --template '{{.name}}')
             BODY=$(gh release view $LATEST_TAG --repo $UPSTREAM_REPO --json body --template '{{.body}}')
-
-            gh release create $LATEST_TAG ./downloads/* --title "$TITLE" --notes "$BODY" || echo "Release 已存在。"
-          else
-            echo "原项目没有发布过 Release 或标签不对，跳过搬运。"
+            gh release create $LATEST_TAG ./downloads/* --title "$TITLE" --notes "$BODY"
           fi
