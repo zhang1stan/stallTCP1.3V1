@@ -22,24 +22,30 @@ jobs:
 
       - name: 同步上游代码及标签
         env:
-          # 【修正点】根据您的 fork 信息填写的上游地址
           UPSTREAM_REPO: "xtgm/stallTCP1.32V2" 
           GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
         run: |
           git remote remove upstream || true
           git remote add upstream https://github.com/$UPSTREAM_REPO.git
           
-          # 自动检测上游主分支
+          # 1. 获取上游分支
           UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d' ' -f5)
-          echo "发现上游主分支: $UPSTREAM_BRANCH"
+          echo "上游主分支是: $UPSTREAM_BRANCH"
           
           git fetch upstream $UPSTREAM_BRANCH
-          git checkout $UPSTREAM_BRANCH || git checkout -b $UPSTREAM_BRANCH upstream/$UPSTREAM_BRANCH
-          git merge upstream/$UPSTREAM_BRANCH --ff-only || echo "代码已是最新"
-          git push origin $UPSTREAM_BRANCH
 
+          # 2. 【核心修复】使用常规 merge 允许合并不同的历史
+          # 这样能把原作者的 130 个更新和您的 4 个提交（脚本文件）合在一起
+          git checkout main || git checkout -b main
+          git merge upstream/$UPSTREAM_BRANCH --allow-unrelated-histories -m "自动化同步：合入上游更新" || echo "合并存在冲突，尝试自动处理"
+
+          # 3. 推送更新到您的仓库
+          git push origin main --force
+          
+          # 4. 同步标签
           git fetch upstream --tags
           git push origin --tags --force
+
 
       - name: 检查并搬运 Release 附件 (带容错)
         env:
