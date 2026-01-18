@@ -1,0 +1,57 @@
+name: 全自动项目同步机器人
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_PAT }}
+
+      - name: 配置 Git 环境
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+
+      - name: 同步上游代码及标签
+        env:
+          # 【修改这里】换成你想要搬运的作者和项目名
+          UPSTREAM_REPO: "stallTCP1.3V1" 
+          GITHUB_TOKEN: ${{ secrets.SYNC_PAT }}
+        run: |
+          git remote remove upstream || true
+          git remote add upstream https://github.com/$UPSTREAM_REPO.git
+          
+          # 获取主分支名称（有些项目叫 master，有些叫 main）
+          UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d' ' -f5)
+          
+          git fetch upstream $UPSTREAM_BRANCH
+          git checkout $UPSTREAM_BRANCH || git checkout -b $UPSTREAM_BRANCH upstream/$UPSTREAM_BRANCH
+          git merge upstream/$UPSTREAM_BRANCH --ff-only || echo "Already up to date"
+          git push origin $UPSTREAM_BRANCH
+
+          git fetch upstream --tags
+          git push origin --tags --force
+
+      - name: 检查并搬运 Release 附件
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_PAT }}
+          UPSTREAM_REPO: "stallTCP1.3V1" # 【同步修改这里】
+        run: |
+          LATEST_TAG=$(gh release view --repo $UPSTREAM_REPO --json tagName --template '{{.tagName}}')
+          if gh release view $LATEST_TAG >/dev/null 2>&1; then
+            echo "Release exists, skipping."
+          else
+            mkdir -p ./downloads
+            gh release download $LATEST_TAG --repo $UPSTREAM_REPO --dir ./downloads
+            TITLE=$(gh release view $LATEST_TAG --repo $UPSTREAM_REPO --json name --template '{{.name}}')
+            BODY=$(gh release view $LATEST_TAG --repo $UPSTREAM_REPO --json body --template '{{.body}}')
+            gh release create $LATEST_TAG ./downloads/* --title "$TITLE" --notes "$BODY"
+          fi
