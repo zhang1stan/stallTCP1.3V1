@@ -118,9 +118,10 @@ function parsePC(path) {
     } catch(e) {}
   }
 
-  // 2. 局部 proxyip
+  // 2. 局部 proxyip（排除 socks5/s5/http 前缀）
   const im = path.match(/(?:^|\/)(?:proxy)?ip[=\/]([^?#]+)/i);
-  if (im) {
+  const hasSocks = path.match(/(?:^|\/)(socks5?|s5|http)[=\/]/i);
+  if (im && !hasSocks) {
     const seg = im[1];
     const [addr, port = 443] = parseAddressPort(seg);
     proxyIP = { address: addr.includes('[') ? addr.slice(1, -1) : addr, port: +port };
