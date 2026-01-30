@@ -6,8 +6,8 @@ import { connect } from 'cloudflare:sockets';
 
 // --- 基础账号与网络配置 ---
 let UUID = "06b65903-406d-4a41-8463-6fd5c0ee7798"; //修改可用的uuid
-const WEB_PASSWORD = "你的登录密码";  //修改你的登录密码
-const SUB_PASSWORD = "你的订阅密码";  //修改你的订阅密码
+const WEB_PASSWORD = "123456";  //修改你的登录密码
+const SUB_PASSWORD = "123456";  //修改你的订阅密码
 const DEFAULT_PROXY_IP = "ProxyIP.US.CMLiussss.net"; // 支持多ProxyIP，使用逗号分隔
 const DEFAULT_SUB_DOMAIN = "sub.cmliussss.net";      // 支持多订阅域名，使用逗号分隔
 const DEFAULT_CONVERTER = "https://subapi.cmliussss.net"; // 支持多转换器，使用逗号分隔
@@ -70,42 +70,30 @@ const parseAddressPort = (seg) => {
 // =============================================================================
 const parserSq = (raw) => {
   let username, password, hostname, port;
-  // 动态构造正则，避免静态特征
-  const reGlobal = new RegExp(`^(${P_S}5?|https?):\\/\\/`, 'i');
-  
-  if (raw.includes('://') && !raw.match(reGlobal)) {
+  // 局部代理形式：user:pass@host:port 或 base64@host:port
+  let authPart = '', hostPart = raw;
+  const at = raw.lastIndexOf('@');
+  if (at !== -1) { authPart = raw.substring(0, at); hostPart = raw.substring(at + 1); }
+  if (authPart && !authPart.includes(':')) {
     try {
-      const u = new URL(raw);
-      hostname = u.hostname;
-      port = u.port || (u.protocol === 'http:' ? 80 : 1080);
-      const auth = u.username || u.password ? `${u.username}:${u.password}` : u.username;
-      if (auth && auth.includes(':')) [username, password] = auth.split(':');
-      else if (auth) {
-        const dec = atob(auth.replace(/%3D/g, '=').padEnd(auth.length + (4 - auth.length % 4) % 4, '=')); 
-        const p = dec.split(':'); if (p.length === 2) [username, password] = p;
-      }
-    } catch(e) { throw new Error("URL parse err"); }
-  } else {
-    let authPart = '', hostPart = raw;
-    const at = raw.lastIndexOf('@');
-    if (at !== -1) { authPart = raw.substring(0, at); hostPart = raw.substring(at + 1); }
-    if (authPart && !authPart.includes(':')) {
-      try { 
-        const dec = atob(authPart.replace(/%3D/g, '=').padEnd(authPart.length + (4 - authPart.length % 4) % 4, '=')); 
-        const p = dec.split(':'); if (p.length === 2) [username, password] = p; 
-      } catch {}
-    }
-    if (!username && authPart && authPart.includes(':')) [username, password] = authPart.split(':');
-    const [h, p] = parseAddressPort(hostPart);
-    hostname = h; port = p || (raw.includes('http=') ? 80 : 1080);
+      const dec = atob(authPart.replace(/%3D/g, '=').padEnd(authPart.length + (4 - authPart.length % 4) % 4, '='));
+      const p = dec.split(':'); if (p.length === 2) [username, password] = p;
+    } catch {}
   }
+  if (!username && authPart && authPart.includes(':')) {
+    const idx = authPart.indexOf(':');
+    username = authPart.substring(0, idx);
+    password = authPart.substring(idx + 1);
+  }
+  const [h, p] = parseAddressPort(hostPart);
+  hostname = h; port = p || (raw.includes('http=') ? 80 : 1080);
   if (!hostname || isNaN(port)) throw new Error("Invalid cfg");
   return { username, password, hostname, port };
 };
 
 function parsePC(path) {
   let proxyIP = null, sq = null, enSq = null, gp = null;
-  
+
   // 1. 全局代理 (动态正则)
   const reG = new RegExp(`(${P_S}5?|https?):\\/\\/([^/#?]+)`, 'i');
   const gm = path.match(reG);
@@ -161,7 +149,13 @@ async function connSq(at, ar, pr, cfg) {
   if (at === 1) DST = new Uint8Array([1, ...ar.split(".").map(Number)]);
   else if (at === 2) DST = new Uint8Array([3, ar.length, ...enc.encode(ar)]);
   else if (at === 3) {
-    const b = ar.slice(1, -1).split(':').flatMap(h => [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16)]);
+    const ipv6 = ar.slice(1, -1);
+    const parts = ipv6.split(':');
+    const b = [];
+    for (const part of parts) {
+      const val = parseInt(part || '0', 16);
+      b.push((val >> 8) & 0xff, val & 0xff);
+    }
     DST = new Uint8Array([4, ...b]);
   }
   await w.write(new Uint8Array([5, 1, 0, ...DST, (pr >> 8) & 0xff, pr & 0xff]));
@@ -274,7 +268,7 @@ const handle = (ws, pip, sq, enSq, gp, uid) => {
       cleanSock();
       if (pendBytes > MAX_PENDING * 2) { while (pendBytes > MAX_PENDING && pend.length > 5) { const drop = pend.shift(); pendBytes -= drop.length; pool.free(drop); } }
       await new Promise(res => setTimeout(res, d)); conn = true;
-      sock = connect({ hostname: info.host, port: info.port }); await sock.opened;
+      sock = await tryConnect(info.host, info.port, info.addressType); if (sock.opened) await sock.opened;
       w = sock.writable.getWriter(); r = sock.readable.getReader(); const bt = pend.splice(0, 10);
       for (const b of bt) { await w.write(b); pendBytes -= b.length; pool.free(b); }
       conn = false; reconns = 0; score = Math.min(1.0, score + 0.15); stalls = 0; lastAct = Date.now(); readLoop();
@@ -898,14 +892,16 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             --warning: #d97706;
             --danger: #dc2626;
         }
-        /* 👇 修改：白色主题背景改为天蓝色渐变 */
+        /* 👇 修改：白色主题背景改为天空蓝色渐变 */
         body.light {
-            background: linear-gradient(to bottom, #f0f9ff 0%, #bae6fd 50%, #38bdf8 100%);
+            background: linear-gradient(to bottom, #87CEEB 0%, #B0E0E6 30%, #E0F7FA 60%, #F0F9FF 100%);
         }
+        /* 白色模式 - 玻璃碎片变为白云效果 */
         body.light .shard {
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(124, 58, 237, 0.04));
-            border: 1px solid rgba(37, 99, 235, 0.15);
-            box-shadow: 0 8px 32px rgba(37, 99, 235, 0.1);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4));
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
         }
 
         /* 白色模式输入框优化 */
@@ -1004,9 +1000,9 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             overflow-x: hidden;
         }
 
-        /* 白色模式星空背景 */
+        /* 白色模式天空背景 */
         body.light {
-            background: radial-gradient(ellipse at top, #e0f2fe 0%, #ddd6fe 50%, #fce7f3 100%);
+            background: linear-gradient(to bottom, #87CEEB 0%, #B0E0E6 30%, #E0F7FA 60%, #F0F9FF 100%);
         }
 
         /* 星星背景 */
@@ -1070,14 +1066,19 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
         .meteor:nth-child(9) { top: 22%; left: 80%; animation-duration: 2.6s; animation-delay: 6s; }
         .meteor:nth-child(10) { top: 7%; left: 35%; animation-duration: 2.2s; animation-delay: 6.8s; }
 
-        /* 白色模式流星 */
+        /* 白色模式 - 流星变为白云效果 */
         body.light .meteor {
-            background: linear-gradient(to bottom, rgba(37, 99, 235, 1), rgba(37, 99, 235, 0.5), transparent);
-            box-shadow: 0 0 10px rgba(37, 99, 235, 0.6);
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6), transparent);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            width: 80px;
+            height: 30px;
+            animation-duration: 8s !important;
         }
+        /* 白色模式 - 星星变为阳光闪烁 */
         body.light .star {
-            background: rgba(37, 99, 235, 0.5);
-            box-shadow: 0 0 4px rgba(37, 99, 235, 0.6);
+            background: rgba(255, 215, 0, 0.7);
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.9);
         }
 
         /* 玻璃碎裂动态背景 */
@@ -2293,6 +2294,218 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                 transform: translateY(0);
             }
         }
+
+        /* ==================== 网络信息模块样式 ==================== */
+        .network-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        @media (max-width: 768px) {
+            .network-cards-grid { grid-template-columns: 1fr; }
+        }
+        .network-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 15px;
+            transition: all 0.3s ease;
+        }
+        .network-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--glass-blue);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.2);
+        }
+        .network-card-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .network-info-content { display: flex; flex-direction: column; }
+        .ip-text {
+            color: var(--glass-cyan);
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            word-break: break-all;
+        }
+        .ip-text.error { color: var(--danger); }
+        .location-text {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .network-tip {
+            margin-top: 8px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            opacity: 0.7;
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .status-loading {
+            background: #fbbf24;
+            animation: pulse-loading 1.5s ease-in-out infinite;
+        }
+        .status-success { background: #10b981; }
+        .status-error { background: #ef4444; }
+        @keyframes pulse-loading {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .network-info-tip {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 10px;
+        }
+        .network-info-tip a {
+            color: var(--glass-blue);
+            text-decoration: none;
+        }
+        .network-info-tip a:hover { text-decoration: underline; }
+
+        /* 延迟测试卡片 */
+        .latency-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        @media (max-width: 1200px) {
+            .latency-cards-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 768px) {
+            .latency-cards-grid { grid-template-columns: 1fr; }
+        }
+        .latency-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 15px;
+            min-height: 70px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+        }
+        .latency-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--glass-blue);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.2);
+        }
+        .latency-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            z-index: 2;
+        }
+        .latency-card-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .latency-card-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--border);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        .latency-card:hover .latency-card-icon {
+            background: rgba(79, 172, 254, 0.2);
+        }
+        .latency-card-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+        .latency-card-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .latency-card-region {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .latency-card-region.domestic { color: var(--glass-green); }
+        .latency-card-region.international { color: var(--glass-blue); }
+        .latency-status {
+            font-family: 'Orbitron', 'Courier New', monospace;
+            font-size: 1.3rem;
+            font-weight: 800;
+            font-style: italic;
+            color: var(--glass-cyan);
+        }
+        .latency-status .unit {
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            font-style: normal;
+            opacity: 0.7;
+            margin-left: 2px;
+        }
+        /* 延迟颜色 */
+        .latency-green { color: #4CAF50 !important; }
+        .latency-yellow { color: #83DA00 !important; }
+        .latency-orange { color: #f58722 !important; }
+        .latency-red { color: #ff404a !important; }
+
+        /* 深色图标适配 - GitHub/抖音/X.com */
+        .latency-card-icon[data-site="github"] svg path,
+        .latency-card-icon[data-site="字节抖音"] svg path,
+        .latency-card-icon[data-site="x.com"] svg path {
+            fill: #e8eaf6 !important;
+        }
+        body.light .latency-card-icon[data-site="github"] svg path,
+        body.light .latency-card-icon[data-site="字节抖音"] svg path,
+        body.light .latency-card-icon[data-site="x.com"] svg path {
+            fill: #0f172a !important;
+        }
+
+        /* 白色模式网络信息优化 */
+        body.light .network-card {
+            background: rgba(255, 255, 255, 0.85);
+            border-color: rgba(37, 99, 235, 0.2);
+        }
+        body.light .network-card:hover {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: var(--glass-blue);
+        }
+        body.light .ip-text {
+            color: #0891b2;
+        }
+        body.light .latency-card {
+            background: rgba(255, 255, 255, 0.85);
+            border-color: rgba(37, 99, 235, 0.2);
+        }
+        body.light .latency-card:hover {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: var(--glass-blue);
+        }
+        body.light .latency-card-icon {
+            background: rgba(37, 99, 235, 0.1);
+        }
+        body.light .latency-card:hover .latency-card-icon {
+            background: rgba(37, 99, 235, 0.2);
+        }
     </style>
 </head>
 <body id="mainBody">
@@ -2337,6 +2550,9 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             <div class="nav-menu">
                 <div class="nav-item active" onclick="showSection('dashboard')">
                     <span class="icon">📊</span> 控制台
+                </div>
+                <div class="nav-item" onclick="showSection('network')">
+                    <span class="icon">🌐</span> 网络信息
                 </div>
                 <div class="nav-item" onclick="showSection('subscription')">
                     <span class="icon">🚀</span> 订阅
@@ -2399,6 +2615,64 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- 网络信息面板 -->
+            <div id="section-network" class="content-section">
+                <div class="card">
+                    <div class="card-title"><span class="icon">🌐</span> IP 信息检测</div>
+                    <div class="network-cards-grid">
+                        <div class="network-card">
+                            <div class="network-card-title">
+                                <span class="status-indicator status-loading" id="status-ipip"></span>
+                                <span id="ipip-title">国内测试</span>
+                            </div>
+                            <div class="network-info-content">
+                                <span id="ipip-ip" class="ip-text">加载中...</span>
+                                <div class="location-text"><span id="ipip-country"></span></div>
+                                <div class="network-tip">· 您访问国内站点所使用的IP</div>
+                            </div>
+                        </div>
+                        <div class="network-card">
+                            <div class="network-card-title">
+                                <span class="status-indicator status-loading" id="status-edgeone"></span>
+                                国外测试
+                            </div>
+                            <div class="network-info-content">
+                                <span id="edgeone-ip" class="ip-text">加载中...</span>
+                                <div class="location-text"><span id="edgeone-country"></span></div>
+                                <div class="network-tip">· 您访问国外站点所使用的IP</div>
+                            </div>
+                        </div>
+                        <div class="network-card">
+                            <div class="network-card-title">
+                                <span class="status-indicator status-loading" id="status-cf"></span>
+                                CloudFlare
+                            </div>
+                            <div class="network-info-content">
+                                <span id="cf-ip" class="ip-text">加载中...</span>
+                                <div class="location-text"><span id="cf-country"></span></div>
+                                <div class="network-tip">· 您访问CFCDN站点的落地IP</div>
+                            </div>
+                        </div>
+                        <div class="network-card">
+                            <div class="network-card-title">
+                                <span class="status-indicator status-loading" id="status-twitter"></span>
+                                X.com
+                            </div>
+                            <div class="network-info-content">
+                                <span id="twitter-ip" class="ip-text">加载中...</span>
+                                <div class="location-text"><span id="twitter-country"></span></div>
+                                <div class="network-tip">· 您访问Twitter所使用的IP</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="network-info-tip">💡 <b>国内测试</b> 由分流规则决定，<b>国外测试</b> 由优选IP决定，<b>CF/X.com</b> 由ProxyIP决定</div>
+
+                    <div class="card-title" style="margin-top:25px;padding-top:20px;border-top:1px solid var(--border)"><span class="icon">⚡</span> 延迟测试</div>
+                    <div class="latency-cards-grid" id="latency-cards"></div>
+                    <div class="network-info-tip">💡 更多测试项目，可前往 <a href="https://ip.skk.moe/" target="_blank" rel="noopener">ip.skk.moe</a> 自行测试</div>
                 </div>
             </div>
 
@@ -2782,11 +3056,155 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             location.reload();
         }
 
+        // ==================== 网络信息检测功能 ====================
+        const latencySites = [
+            { name: '字节抖音', region: 'domestic', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#000000" d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>', url: 'https://lf3-zlink-tos.ugurl.cn/obj/zebra-public/resource_lmmizj_1632398893.png' },
+            { name: 'Bilibili', region: 'domestic', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#FB7299" d="M17.813 4.653h.854q2.266.08 3.773 1.574Q23.946 7.72 24 9.987v7.36q-.054 2.266-1.56 3.773c-1.506 1.507-2.262 1.524-3.773 1.56H5.333q-2.266-.054-3.773-1.56C.053 19.614.036 18.858 0 17.347v-7.36q.054-2.267 1.56-3.76t3.773-1.574h.774l-1.174-1.12a1.23 1.23 0 0 1-.373-.906q0-.534.373-.907l.027-.027q.4-.373.92-.373t.92.373L9.653 4.44q.107.106.187.213h4.267a.8.8 0 0 1 .16-.213l2.853-2.747q.4-.373.92-.373c.347 0 .662.151.929.4s.391.551.391.907q0 .532-.373.906zM5.333 7.24q-1.12.027-1.88.773q-.76.748-.786 1.894v7.52q.026 1.146.786 1.893t1.88.773h13.334q1.12-.026 1.88-.773t.786-1.893v-7.52q-.026-1.147-.786-1.894t-1.88-.773zM8 11.107q.56 0 .933.373q.375.374.4.96v1.173q-.025.586-.4.96q-.373.375-.933.374c-.56-.001-.684-.125-.933-.374q-.375-.373-.4-.96V12.44q0-.56.386-.947q.387-.386.947-.386m8 0q.56 0 .933.373q.375.374.4.96v1.173q-.025.586-.4.96q-.373.375-.933.374c-.56-.001-.684-.125-.933-.374q-.375-.373-.4-.96V12.44q.025-.586.4-.96q.373-.373.933-.373"/></svg>', url: 'https://i0.hdslb.com/bfs/face/member/noface.jpg@24w_24h_1c' },
+            { name: '腾讯微信', region: 'domestic', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#09B83E" d="M8.7 2.19C3.9 2.19 0 5.48 0 9.53c0 2.21 1.17 4.2 3 5.55a.6.6 0 0 1 .21.66l-.39 1.48q-.03.11-.04.22c0 .16.13.3.29.3a.3.3 0 0 0 .16-.06l1.9-1.11a.9.9 0 0 1 .72-.1 10 10 0 0 0 2.84.4q.41-.01.81-.05a5.85 5.85 0 0 1 1.93-6.45 8.3 8.3 0 0 1 5.86-1.83c-.58-3.59-4.2-6.35-8.6-6.35m-2.9 3.8c.64 0 1.16.53 1.16 1.18a1.17 1.17 0 0 1-1.16 1.18 1.17 1.17 0 0 1-1.17-1.18c0-.65.52-1.18 1.17-1.18m5.8 0c.65 0 1.17.53 1.17 1.18a1.17 1.17 0 0 1-1.16 1.18 1.17 1.17 0 0 1-1.16-1.18c0-.65.52-1.18 1.16-1.18m5.34 2.87a8 8 0 0 0-5.28 1.78 5.5 5.5 0 0 0-1.78 6.22c.94 2.46 3.66 4.23 6.88 4.23q1.25 0 2.36-.33a.7.7 0 0 1 .6.08l1.59.93.14.04c.13 0 .24-.1.24-.24q-.01-.09-.04-.18l-.33-1.23-.02-.16a.5.5 0 0 1 .2-.4 5.8 5.8 0 0 0 2.5-4.62c0-3.21-2.93-5.84-6.66-6.09zm-2.53 3.27c.53 0 .97.44.97.98a1 1 0 0 1-.97.99 1 1 0 0 1-.97-.99c0-.54.43-.98.97-.98zm4.84 0c.54 0 .97.44.97.98a1 1 0 0 1-.97.99 1 1 0 0 1-.97-.99c0-.54.44-.98.97-.98"/></svg>', url: 'https://res.wx.qq.com/a/wx_fed/assets/res/NTI4MWU5.ico' },
+            { name: '阿里淘宝', region: 'domestic', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#FF6A00" d="M5.2 2.74c.7-.46 1.63-.26 2.1.44l2.14 3.2h5.12l2.14-3.2c.47-.7 1.4-.9 2.1-.44.7.47.9 1.4.44 2.1L17.6 7.38h2.9c.83 0 1.5.67 1.5 1.5v11.62c0 .83-.67 1.5-1.5 1.5H3.5c-.83 0-1.5-.67-1.5-1.5V8.88c0-.83.67-1.5 1.5-1.5h2.9L4.76 4.84c-.46-.7-.26-1.63.44-2.1zM4 9.88v9.62h16V9.88H4zm4.75 2.37c.41 0 .75.34.75.75v3.5c0 .41-.34.75-.75.75s-.75-.34-.75-.75V13c0-.41.34-.75.75-.75zm6.5 0c.41 0 .75.34.75.75v3.5c0 .41-.34.75-.75.75s-.75-.34-.75-.75V13c0-.41.34-.75.75-.75z"/></svg>', url: 'https://img.alicdn.com/imgextra/i2/O1CN01qnQCrN1VkzAWiU4Hs_!!6000000002692-2-tps-33-33.png' },
+            { name: 'GitHub', region: 'international', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#181717" d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.66-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.7 4.7 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3"/></svg>', url: 'https://github.github.io/janky/images/bg_hr.png' },
+            { name: 'Telegram', region: 'international', icon: '<svg width="24" height="24" viewBox="0 0 16 16"><defs><linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="tg"><stop stop-color="#38AEEB" offset="0%"/><stop stop-color="#279AD1" offset="100%"/></linearGradient></defs><circle fill="url(#tg)" cx="8" cy="8" r="8"/><path d="M3.17 7.84c2.62-1.1 4.36-1.82 5.24-2.17 2.49-.99 2.84-1.14 3.18-1.14.07 0 .25.03.39.15.12.12.16.2.17.27.01.07.01.28 0 .4-.14 1.36-.65 4.5-.95 6.03-.12.64-.37.86-.61.88-.52.05-.92-.32-1.42-.64-.79-.5-1.05-.68-1.83-1.17-.89-.56-.52-.76-.02-1.26.13-.13 2.32-2.13 2.35-2.31.03-.16.02-.18-.08-.25-.08-.07-.17-.06-.22-.05-.1.02-1.3.77-3.64 2.28-.34.23-.66.34-.94.34-.32-.01-.93-.17-1.39-.31-.56-.18-1-.27-.96-.57.02-.16.26-.32.72-.49z" fill="#FFF"/></svg>', url: 'https://web.telegram.org/k/' },
+            { name: 'X.com', region: 'international', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#000000" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>', url: 'https://abs.twimg.com/favicons/twitter.3.ico' },
+            { name: 'YouTube', region: 'international', icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#FF0000" d="M23.5 6.19a3 3 0 0 0-2.12-2.14c-1.87-.5-9.38-.5-9.38-.5s-7.5 0-9.38.5A3 3 0 0 0 .5 6.19C0 8.07 0 12 0 12s0 3.93.5 5.81a3 3 0 0 0 2.12 2.14c1.87.5 9.38.5 9.38.5s7.5 0 9.38-.5a3 3 0 0 0 2.12-2.14C24 15.93 24 12 24 12s0-3.93-.5-5.81M9.55 15.57V8.43L15.82 12z"/></svg>', url: 'https://www.youtube.com/favicon.ico' }
+        ];
+
+        function setNetworkStatus(id, status) {
+            const el = document.getElementById(id);
+            if (el) el.className = 'status-indicator status-' + status;
+        }
+
+        function getLatencyColor(latency) {
+            if (latency === -1) return 'latency-red';
+            if (latency <= 49) return 'latency-green';
+            if (latency <= 149) return 'latency-yellow';
+            if (latency <= 299) return 'latency-orange';
+            return 'latency-red';
+        }
+
+        async function testLatency(url) {
+            const start = Date.now();
+            try {
+                await fetch(url + '?t=' + Date.now(), { method: 'HEAD', cache: 'no-cache', mode: 'no-cors' });
+                return Date.now() - start;
+            } catch { return -1; }
+        }
+
+        function generateLatencyCards() {
+            const container = document.getElementById('latency-cards');
+            if (!container) return;
+            container.innerHTML = '';
+            latencySites.forEach(site => {
+                const siteName = site.name.toLowerCase().replace(/\\s+/g, '-');
+                const regionClass = site.region === 'domestic' ? 'domestic' : 'international';
+                const regionText = site.region === 'domestic' ? '国内' : '国际';
+                const card = document.createElement('div');
+                card.className = 'latency-card';
+                card.innerHTML = '<div class="latency-card-header"><div class="latency-card-info"><div class="latency-card-icon" data-site="' + site.name + '">' + site.icon + '</div><div><div class="latency-card-name">' + site.name + '</div><div class="latency-card-region ' + regionClass + '">' + regionText + '</div></div></div><div class="latency-status" id="latency-' + siteName + '">...<span class="unit">ms</span></div></div>';
+                container.appendChild(card);
+            });
+        }
+
+        async function runLatencyTests() {
+            for (const site of latencySites) {
+                const siteName = site.name.toLowerCase().replace(/\\s+/g, '-');
+                const el = document.getElementById('latency-' + siteName);
+                if (!el) continue;
+                const latency = await testLatency(site.url);
+                const colorClass = getLatencyColor(latency);
+                if (latency === -1) {
+                    el.innerHTML = 'TIMEOUT';
+                } else {
+                    el.innerHTML = latency + '<span class="unit">ms</span>';
+                }
+                el.className = 'latency-status ' + colorClass;
+            }
+        }
+
+        async function fetchIpipData() {
+            setNetworkStatus('status-ipip', 'loading');
+            const apis = [
+                { name: 'speedtest.cn', url: 'https://api-v3.speedtest.cn/ip', parse: d => d.code === 0 && d.data ? { ip: d.data.ip, loc: (d.data.country || '') + ' ' + (d.data.city || '') } : null },
+                { name: 'ipipv.com', url: 'https://myip.ipipv.com/', parse: d => ({ ip: d.Ip, loc: (d.Country || '') + ' ' + (d.City || '') }) },
+                { name: 'ipip.net', url: 'https://myip.ipip.net/json', parse: d => d.ret === 'ok' && d.data ? { ip: d.data.ip, loc: (d.data.location[0] || '') + ' ' + (d.data.location[2] || '') } : null }
+            ];
+            for (const api of apis) {
+                try {
+                    const res = await fetch(api.url + '?_t=' + Date.now());
+                    const data = await res.json();
+                    const result = api.parse(data);
+                    if (result && result.ip) {
+                        document.getElementById('ipip-ip').textContent = result.ip;
+                        document.getElementById('ipip-country').textContent = result.loc.trim();
+                        document.getElementById('ipip-title').textContent = '国内测试(' + api.name + ')';
+                        setNetworkStatus('status-ipip', 'success');
+                        return;
+                    }
+                } catch {}
+            }
+            document.getElementById('ipip-ip').innerHTML = '<span class="error">加载失败</span>';
+            setNetworkStatus('status-ipip', 'error');
+        }
+
+        async function fetchEdgeOneData() {
+            setNetworkStatus('status-edgeone', 'loading');
+            try {
+                const res = await fetch('https://api.ipapi.cmliussss.net');
+                const d = await res.json();
+                document.getElementById('edgeone-ip').textContent = d.ip || '未知';
+                document.getElementById('edgeone-country').textContent = ((d.location?.country_code || '') + ' AS' + (d.asn?.asn || '') + ' ' + (d.asn?.org || '')).trim();
+                setNetworkStatus('status-edgeone', 'success');
+            } catch {
+                document.getElementById('edgeone-ip').innerHTML = '<span class="error">加载失败</span>';
+                setNetworkStatus('status-edgeone', 'error');
+            }
+        }
+
+        async function fetchCloudFlareData() {
+            setNetworkStatus('status-cf', 'loading');
+            try {
+                const res = await fetch('https://cf.090227.xyz/ip.json?_t=' + Date.now());
+                const d = await res.json();
+                document.getElementById('cf-ip').textContent = d.ip || '未知';
+                document.getElementById('cf-country').textContent = ((d.country || '') + ' ' + (d.org || '')).trim() || '未知';
+                setNetworkStatus('status-cf', 'success');
+            } catch {
+                document.getElementById('cf-ip').innerHTML = '<span class="error">加载失败</span>';
+                setNetworkStatus('status-cf', 'error');
+            }
+        }
+
+        async function fetchTwitterData() {
+            setNetworkStatus('status-twitter', 'loading');
+            try {
+                const res = await fetch('https://help.x.com/cdn-cgi/trace?_t=' + Date.now());
+                const text = await res.text();
+                const data = {};
+                text.split('\\n').forEach(line => { const [k, v] = line.split('='); if (k && v) data[k.trim()] = v.trim(); });
+                document.getElementById('twitter-ip').textContent = data.ip || '未知';
+                document.getElementById('twitter-country').textContent = ((data.loc || '') + ' ' + (data.colo || '')).trim() || '未知';
+                setNetworkStatus('status-twitter', 'success');
+            } catch {
+                document.getElementById('twitter-ip').innerHTML = '<span class="error">加载失败</span>';
+                setNetworkStatus('status-twitter', 'error');
+            }
+        }
+
+        function loadNetworkInfo() {
+            generateLatencyCards();
+            fetchIpipData();
+            fetchEdgeOneData();
+            fetchCloudFlareData();
+            fetchTwitterData();
+            runLatencyTests();
+            setInterval(runLatencyTests, 5000);
+        }
+
         // 初始化
         updateStats();
         loadLogs();
         loadWhitelist();
         updateLink();
+        loadNetworkInfo();
         setInterval(loadLogs, 5000);
     </script>
 </body>
