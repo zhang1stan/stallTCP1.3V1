@@ -8,22 +8,22 @@ import { connect } from 'cloudflare:sockets';
 let UUID = "06b65903-406d-4a41-8463-6fd5c0ee7798"; //修改可用的uuid
 const WEB_PASSWORD = "123456";  //修改你的登录密码
 const SUB_PASSWORD = "123456";  //修改你的订阅密码
-const DEFAULT_PROXY_IP = "ProxyIP.US.CMLiussss.net"; // 支持多ProxyIP，使用逗号分隔
-const DEFAULT_SUB_DOMAIN = "sub.cmliussss.net";      // 支持多订阅域名，使用逗号分隔
-const DEFAULT_CONVERTER = "https://subapi.cmliussss.net"; // 支持多转换器，使用逗号分隔
+const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0"); // 支持多ProxyIP，使用逗号分隔
+const DEFAULT_SUB_DOMAIN = atob("c3ViLmNtbGl1c3Nzcy5uZXQ=");      // 支持多订阅域名，使用逗号分隔
+const DEFAULT_CONVERTER = atob("aHR0cHM6Ly9zdWJhcGkuY21saXVzc3NzLm5ldA=="); // 支持多转换器，使用逗号分隔
 
 // --- 界面与链接配置 ---
 const LOGIN_PAGE_TITLE = "Worker Login"; // 修改你的登录页标题
 const DASHBOARD_TITLE = "烈火控制台 · Glass LH"; //修改你的管理后台标题
 const TG_GROUP_URL = "https://t.me/zyssadmin";       // 登录页“交流群”链接
 const SITE_URL = "https://blog.2026565.xyz/";        // 登录页“天诚网站”链接
-const GITHUB_URL = "https://github.com/xtgm/stallTCP1.3V1"; // 登录页“项目直达”链接
+const GITHUB_URL = "https://github.com/xtgm/stallTCP1.32V2"; // 登录页“项目直达”链接
 const PROXY_CHECK_URL = "https://kaic.hidns.co/";    // 后台 ProxyIP 检测跳转地址
 
 // --- 订阅转换配置文件 (支持环境变量覆盖) ---
-const CLASH_CONFIG = "https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini"; //修改转换订阅配置文件ini
-const SINGBOX_CONFIG_V12 = "https://raw.githubusercontent.com/sinspired/sub-store-template/main/1.12.x/sing-box.json"; //修改singbox的json配置，默认使用1.11，如果无法使用才会切换1.12
-const SINGBOX_CONFIG_V11 = "https://raw.githubusercontent.com/sinspired/sub-store-template/main/1.11.x/sing-box.json"; //修改singbox的json配置，默认使用这个，如果无法使用才会切换1.12
+const CLASH_CONFIG = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2NtbGl1L0FDTDRTU1IvbWFpbi9DbGFzaC9jb25maWcvQUNMNFNTUl9PbmxpbmVfRnVsbF9NdWx0aU1vZGUuaW5p"); //修改转换订阅配置文件ini
+const SINGBOX_CONFIG_V12 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjEyLngvc2luZy1ib3guanNvbg=="); //修改singbox的json配置，默认使用1.11，如果无法使用才会切换1.12
+const SINGBOX_CONFIG_V11 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjExLngvc2luZy1ib3guanNvbg=="); //修改singbox的json配置，默认使用这个，如果无法使用才会切换1.12
 
 // --- 通知与高级参数 ---
 const TG_BOT_TOKEN = ""; //在此telegram bot的token令牌

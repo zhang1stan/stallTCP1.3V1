@@ -6,6 +6,11 @@
 
 - [项目介绍](#-项目介绍)
   - [配置加载优先级详解](#️-配置加载优先级详解)
+- [🔑 默认值配置格式说明（重要）](#-默认值配置格式说明重要)
+  - [支持的两种写法](#支持的两种写法)
+  - [Worker 版配置变量](#worker-版配置变量)
+  - [Snippets 版配置变量](#snippets-版配置变量)
+  - [如何修改 Base64 为明文](#如何修改-base64-为明文)
 - [代码版本说明](#-代码版本说明)
 - [界面预览](#️-界面预览)
 - [懒人使用指南](#-懒人使用指南)
@@ -107,6 +112,131 @@
 - 如果删除环境变量，系统会自动降级使用 D1 数据库中的配置
 - 如果 D1 和 KV 都未配置，使用代码中的默认值
 - 环境变量适合存储密钥等敏感信息，后台配置适合频繁修改的参数
+
+---
+
+## 🔑 默认值配置格式说明（重要）
+
+> **⚠️ 重要提示：代码中使用 Base64 编码的默认值变量，同时支持 Base64 和明文两种写法！**
+>
+> 用户可以根据自己的需求，选择使用 Base64 编码或直接使用明文。两种方式功能完全相同，不影响任何功能。
+
+### 支持的两种写法
+
+| 写法 | 示例 | 说明 |
+|------|------|------|
+| **Base64 编码** | `atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0")` | 防止 GitHub 搜索和爬虫直接匹配敏感域名 |
+| **明文** | `"ProxyIP.US.CMLiussss.net"` | 直观易读，方便修改 |
+
+**两种写法在运行时效果完全相同**，JavaScript 会在代码执行时自动解码 Base64，最终得到相同的字符串值。
+
+---
+
+### Worker 版配置变量
+
+**文件：`_worker.js` / `worker测试.txt`**
+
+以下变量支持 Base64 或明文两种格式：
+
+| 变量名 | 用途 | 当前默认值（Base64 解码后） |
+|--------|------|---------------------------|
+| `DEFAULT_PROXY_IP` | 默认 ProxyIP 地址 | `ProxyIP.US.CMLiussss.net` |
+| `DEFAULT_SUB_DOMAIN` | 默认订阅器域名 | `sub.cmliussss.net` |
+| `DEFAULT_CONVERTER` | 默认订阅转换后端 | `https://subapi.cmliussss.net` |
+| `CLASH_CONFIG` | Clash 配置模板 URL | ACL4SSR 配置链接 |
+| `SINGBOX_CONFIG_V12` | Sing-box v1.12 配置 | sinspired 模板链接 |
+| `SINGBOX_CONFIG_V11` | Sing-box v1.11 配置 | sinspired 模板链接 |
+
+**代码示例（Worker 版）：**
+
+```javascript
+// 方式一：Base64 编码（当前默认）
+const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0"); // 支持多ProxyIP，使用逗号分隔
+const DEFAULT_SUB_DOMAIN = atob("c3ViLmNtbGl1c3Nzcy5uZXQ=");      // 支持多订阅域名，使用逗号分隔
+const DEFAULT_CONVERTER = atob("aHR0cHM6Ly9zdWJhcGkuY21saXVzc3NzLm5ldA=="); // 支持多转换器，使用逗号分隔
+
+// 方式二：明文（用户可改成这样）
+const DEFAULT_PROXY_IP = "你的proxyip地址";     // 支持多ProxyIP，使用逗号分隔
+const DEFAULT_SUB_DOMAIN = "你的sub订阅器域名";  // 支持多订阅域名，使用逗号分隔
+const DEFAULT_CONVERTER = "https://你的转换后端"; // 支持多转换器，使用逗号分隔
+```
+
+---
+
+### Snippets 版配置变量
+
+**文件：`snippets.js` / `snippets测试.txt`**
+
+以下变量支持 Base64 或明文两种格式：
+
+| 变量名 | 用途 | 当前默认值（Base64 解码后） |
+|--------|------|---------------------------|
+| `DEFAULT_PROXY_IP` | 默认 ProxyIP 地址 | `ProxyIP.US.CMLiussss.net` |
+| `DEFAULT_SUB_DOMAIN` | 默认订阅器域名 | `sub.cmliussss.net` |
+| `DEFAULT_CONVERTER` | 默认订阅转换后端 | `https://subapi.cmliussss.net` |
+| `CLASH_CONFIG` | Clash 配置模板 URL | ACL4SSR 配置链接 |
+| `SINGBOX_CONFIG_V12` | Sing-box v1.12 配置 | sinspired 模板链接 |
+| `SINGBOX_CONFIG_V11` | Sing-box v1.11 配置 | sinspired 模板链接 |
+
+**代码示例（Snippets 版）：**
+
+```javascript
+// 方式一：Base64 编码（当前默认）
+const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0");  //可修改自定义的proxyip
+const DEFAULT_SUB_DOMAIN = atob("c3ViLmNtbGl1c3Nzcy5uZXQ=");  //可修改自定义的sub订阅器
+const DEFAULT_CONVERTER = atob("aHR0cHM6Ly9zdWJhcGkuY21saXVzc3NzLm5ldA==");  //可修改自定义后端api
+const CLASH_CONFIG = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2NtbGl1L0FDTDRTU1IvbWFpbi9DbGFzaC9jb25maWcvQUNMNFNTUl9PbmxpbmVfRnVsbF9NdWx0aU1vZGUuaW5p"); //可修改自定义订阅配置转换ini
+const SINGBOX_CONFIG_V12 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjEyLngvc2luZy1ib3guanNvbg=="); //禁止修改 优先使用1.12 后用1.11
+const SINGBOX_CONFIG_V11 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjExLngvc2luZy1ib3guanNvbg=="); //禁止修改
+
+// 方式二：明文（用户可改成这样）
+const DEFAULT_PROXY_IP = "你的proxyip地址";  //可修改自定义的proxyip
+const DEFAULT_SUB_DOMAIN = "你的sub订阅器域名";  //可修改自定义的sub订阅器
+const DEFAULT_CONVERTER = "https://你的转换后端";  //可修改自定义后端api
+const CLASH_CONFIG = "https://你的clash配置链接"; //可修改自定义订阅配置转换ini
+const SINGBOX_CONFIG_V12 = "https://你的singbox配置链接"; //可修改singbox的json配置
+const SINGBOX_CONFIG_V11 = "https://你的singbox配置链接"; //可修改singbox的json配置
+```
+
+---
+
+### 如何修改 Base64 为明文
+
+**步骤 1：找到要修改的变量**
+
+在代码顶部的「用户配置区域」找到使用 `atob()` 的变量。
+
+**步骤 2：解码 Base64 查看原始值（可选）**
+
+如果想知道当前 Base64 编码的内容，可以在浏览器控制台执行：
+
+```javascript
+// 示例：解码 DEFAULT_PROXY_IP
+atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0")
+// 输出: "ProxyIP.US.CMLiussss.net"
+```
+
+**步骤 3：直接替换为明文**
+
+```javascript
+// 修改前（Base64）
+const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0");
+
+// 修改后（明文）
+const DEFAULT_PROXY_IP = "你想要的proxyip地址";
+```
+
+**步骤 4：保存并部署**
+
+修改完成后保存代码，重新部署即可生效。
+
+---
+
+**💡 小贴士：**
+
+- 如果你想保持隐私（防止 GitHub 搜索到你的域名），建议继续使用 Base64 编码
+- 如果你只是自用且不公开代码，使用明文更方便修改和维护
+- 两种方式可以混用，比如敏感域名用 Base64，普通配置用明文
 
 ---
 
@@ -904,6 +1034,99 @@ UUID_REFRESH = 86400
         ```
 *   **权限要求**：API Token 需要 `Account Analytics:Read` 权限。
 *   **查询范围**：自动查询当日 00:00 UTC 至当前时间的所有请求。
+
+---
+
+### 📖 Cloudflare API 配置图文教程
+
+#### 一、获取 Account ID（账户 ID）
+
+**步骤 1**：登录 Cloudflare Dashboard，在左侧菜单找到 **计算和 AI** → **Workers 和 Pages**。
+
+<img width="200" alt="Workers和Pages入口" src="./issue/计算和AI.png" />
+
+**步骤 2**：在右侧页面找到 **Account Details** 区域，复制 **Account ID**。
+
+<img width="400" alt="Account ID位置" src="./issue/账户ID.png" />
+
+---
+
+#### 二、方案 A：创建 API Token（推荐）
+
+> **推荐理由**：API Token 权限可控，安全性更高，可随时撤销。
+
+**步骤 1**：点击左侧菜单底部的 **管理账户** → **帐户 API 令牌**。
+
+<img width="200" alt="帐户API令牌入口" src="./issue/创建账户API.png" />
+
+**步骤 2**：点击右侧的 **创建令牌** 按钮。
+
+<img width="800" alt="创建令牌按钮" src="./issue/创建账户API令牌.png" />
+
+**步骤 3**：在 **API 令牌模板** 列表中，找到 **阅读分析数据和日志**，点击右侧的 **使用模板** 按钮。
+
+<img width="600" alt="选择模板" src="./issue/API模版为阅读分析数据和日志.png" />
+
+**步骤 4**：配置令牌权限（模板已自动配置好权限，只需配置区域资源）：
+- **区域资源**：选择 **包括** → **帐户的所有区域** → 选择你的 **账户名称**
+
+<img width="800" alt="配置权限" src="./issue/创建令牌完整流程.png" />
+
+**步骤 5**：滚动到页面底部，点击 **创建令牌** 按钮。
+
+<img width="600" alt="确认创建" src="./issue/确定创建账户API令牌.png" />
+
+**步骤 6**：创建成功后，**立即复制并保存 Token**（只显示一次，关闭后无法再次查看）。
+
+---
+
+#### 三、方案 B：获取 Email + Global API Key
+
+> **适用场景**：如果你不想创建新的 API Token，可以使用账户的 Global API Key。
+
+**步骤 1：获取 Email（电子邮件）**
+
+1. 点击 Cloudflare 右上角的 **头像图标**。
+2. 在下拉菜单中点击 **配置文件**。
+
+<img width="200" alt="配置文件入口" src="./issue/邮箱定位.png" />
+
+3. 在 **个人简介** → **设置** 页面，找到 **电子邮件** 字段，这就是你的 `CF_EMAIL`。
+
+<img width="400" alt="电子邮件位置" src="./issue/查看个人邮箱.png" />
+
+**步骤 2：获取 Global API Key**
+
+1. 在左侧菜单点击 **API 令牌**。
+2. 滚动到页面底部，找到 **API 密钥** 区域。
+3. 在 **Global API Key** 行，点击右侧的 **查看** 按钮。
+4. 输入密码验证后，复制显示的 Key，这就是你的 `CF_KEY`。
+
+<img width="800" alt="Global API Key位置" src="./issue/创建全局API.png" />
+
+> ⚠️ **安全提示**：Global API Key 拥有账户的完全访问权限，请妥善保管，不要泄露给他人。建议优先使用方案 A（API Token）。
+
+---
+
+#### 四、配置环境变量
+
+获取到所需信息后，在 Cloudflare Workers 后台 **设置** → **变量** 中添加：
+
+**方案 A（推荐）：**
+```
+CF_ID = 你的Account ID
+CF_TOKEN = 你创建的API Token
+```
+
+**方案 B：**
+```
+CF_EMAIL = 你的Cloudflare登录邮箱
+CF_KEY = 你的Global API Key
+```
+
+配置完成后，后台首页的 3D 球体将显示准确的今日请求统计数据。
+
+---
 
 ### 方式 2：D1 内部统计（备用）
 
