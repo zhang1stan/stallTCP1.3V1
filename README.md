@@ -6,17 +6,22 @@
 
 - [项目介绍](#-项目介绍)
   - [配置加载优先级详解](#️-配置加载优先级详解)
-- [🔑 默认值配置格式说明（重要）](#-默认值配置格式说明重要)
-  - [支持的两种写法](#支持的两种写法)
-  - [Worker 版配置变量](#worker-版配置变量)
-  - [Snippets 版配置变量](#snippets-版配置变量)
-  - [如何修改 Base64 为明文](#如何修改-base64-为明文)
+- [🔑 snippets专用用户配置区域说明（重要 - 必读）](#-snippets专用用户配置区域说明重要---必读)
+  - [配置区域在哪里？](#配置区域在哪里)
+  - [什么是字符串拆分？为什么要这样写？](#什么是字符串拆分为什么要这样写)
+  - [所有配置变量一览表](#所有配置变量一览表-仅参考-snippets不支持环境变量)
+  - [如何修改配置 —— 分步教学](#-如何修改配置--分步教学)
+  - [拆分技巧 —— 怎么拆才有效](#️-拆分技巧--怎么拆才有效)
+  - [完整修改示例](#-完整修改示例)
+  - [常见特征词拆分参考](#常见特征词拆分参考)
+  - [哪些变量可以留空？](#哪些变量可以留空)
+  - [变量名与环境变量对照表（仅 Worker 版适用）](#变量名与环境变量对照表仅-worker-版适用)
 - [代码版本说明](#-代码版本说明)
 - [界面预览](#️-界面预览)
 - [懒人使用指南](#-懒人使用指南)
   - [图文教程](#-图文教程)
   - [后台管理使用说明](#️-后台管理使用说明)
-- [环境变量配置](#️-环境变量配置---部署必看)
+- [环境变量配置（仅 Worker 版）](#️-环境变量配置-variables----仅-worker-版适用)
   - [基础核心配置](#-基础核心配置)
   - [安全与通知配置](#️-安全与通知配置)
   - [节点来源配置](#-节点来源配置)
@@ -115,128 +120,283 @@
 
 ---
 
-## 🔑 默认值配置格式说明（重要）
 
-> **⚠️ 重要提示：代码中使用 Base64 编码的默认值变量，同时支持 Base64 和明文两种写法！**
+## 🔑 snippets专用用户配置区域说明（重要 - 必读）
+
+> **⚠️ snippets代码采用「字符串拆分」防特征扫描技术！**
 >
-> 用户可以根据自己的需求，选择使用 Base64 编码或直接使用明文。两种方式功能完全相同，不影响任何功能。
-
-### 支持的两种写法
-
-| 写法 | 示例 | 说明 |
-|------|------|------|
-| **Base64 编码** | `atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0")` | 防止 GitHub 搜索和爬虫直接匹配敏感域名 |
-| **明文** | `"ProxyIP.US.CMLiussss.net"` | 直观易读，方便修改 |
-
-**两种写法在运行时效果完全相同**，JavaScript 会在代码执行时自动解码 Base64，最终得到相同的字符串值。
+> 配置值通过 `"" + ""` 拼接方式书写，运行时 JavaScript 自动合并为完整字符串。
+> 这样做的目的是：**防止 GitHub 搜索引擎和爬虫通过关键词匹配到你的代码**。
+> 你看到的每一段拼接，连起来读就是完整的明文内容。
 
 ---
 
-### Worker 版配置变量
+### 配置区域在哪里？
 
-**文件：`_worker.js` / `worker测试.txt`**
-
-以下变量支持 Base64 或明文两种格式：
-
-| 变量名 | 用途 | 当前默认值（Base64 解码后） |
-|--------|------|---------------------------|
-| `DEFAULT_PROXY_IP` | 默认 ProxyIP 地址 | `ProxyIP.US.CMLiussss.net` |
-| `DEFAULT_SUB_DOMAIN` | 默认订阅器域名 | `sub.cmliussss.net` |
-| `DEFAULT_CONVERTER` | 默认订阅转换后端 | `https://subapi.cmliussss.net` |
-| `CLASH_CONFIG` | Clash 配置模板 URL | ACL4SSR 配置链接 |
-| `SINGBOX_CONFIG_V12` | Sing-box v1.12 配置 | sinspired 模板链接 |
-| `SINGBOX_CONFIG_V11` | Sing-box v1.11 配置 | sinspired 模板链接 |
-
-**代码示例（Worker 版）：**
+打开代码文件（`snippets.js` 或 `snippets.txt`），**第 3 ~ 19 行**就是用户配置区域：
 
 ```javascript
-// 方式一：Base64 编码（当前默认）
-const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0"); // 支持多ProxyIP，使用逗号分隔
-const DEFAULT_SUB_DOMAIN = atob("c3ViLmNtbGl1c3Nzcy5uZXQ=");      // 支持多订阅域名，使用逗号分隔
-const DEFAULT_CONVERTER = atob("aHR0cHM6Ly9zdWJhcGkuY21saXVzc3NzLm5ldA=="); // 支持多转换器，使用逗号分隔
-
-// 方式二：明文（用户可改成这样）
-const DEFAULT_PROXY_IP = "你的proxyip地址";     // 支持多ProxyIP，使用逗号分隔
-const DEFAULT_SUB_DOMAIN = "你的sub订阅器域名";  // 支持多订阅域名，使用逗号分隔
-const DEFAULT_CONVERTER = "https://你的转换后端"; // 支持多转换器，使用逗号分隔
+// 用户配置区域（用 ""+""  拆分特征词，防止扫描匹配，运行时自动拼接）
+const UUID = "06b65903-406d-4a41-8463-6fd5c0ee7798"; // 可用的uuid
+const WP = "123456";  // 登录密码
+const SUB_PWD = "123456";  // 订阅密码
+let PIP = "Pr"+"oxy"+"IP.US."+"CML"+"iussss"+".net";  // 自定义的中转ip
+let SUB = "sub."+"cm"+"liussss"+".net";  // 自定义的订阅源
+const NU = "https://nva.saas.ae.kg/"; // 🧭 导航按钮链接
+const TG = "https://t.me/zyssadmin";   // 群组
+const PC = "https://kaic.hidns.co/";  // 中转检测站
+let SUBAPI = "https://"+"sub"+"api."+"cm"+"liussss"+".net";  // 自定义后端api
+let SUBINI = "https://"+"raw.github"+"usercontent.com/"+"cm"+"liu/"+"ACL4"+"SSR/main/"+"Cl"+"ash/config/"+"ACL4"+"SSR_Online_Full_MultiMode.ini"; // 自定义订阅配置转换ini
+const SBV12 = "https://"+"raw.github"+"usercontent.com/"+"sins"+"pired/"+"sub-st"+"ore-template/main/1.12.x/"+"sing-"+"box.json"; // 禁止修改
+const SBV11 = "https://"+"raw.github"+"usercontent.com/"+"sins"+"pired/"+"sub-st"+"ore-template/main/1.11.x/"+"sing-"+"box.json"; // 禁止修改
+const BT = "";  // TG Bot Token
+const CI = "";  // TG Chat ID
+const AI = "";  // 管理员IP白名单
+//结束
 ```
 
 ---
 
-### Snippets 版配置变量
+### 什么是字符串拆分？为什么要这样写？
 
-**文件：`snippets.js` / `snippets测试.txt`**
+**问题**：如果你在代码中直接写 `"ProxyIP.US.CMLiussss.net"`，GitHub 搜索引擎和爬虫可以通过搜索 `cmliussss` 直接找到你的代码。
 
-以下变量支持 Base64 或明文两种格式：
+**解决方案**：把字符串用 `+` 号断开，比如写成 `"CML"+"iussss"`。
 
-| 变量名 | 用途 | 当前默认值（Base64 解码后） |
-|--------|------|---------------------------|
-| `DEFAULT_PROXY_IP` | 默认 ProxyIP 地址 | `ProxyIP.US.CMLiussss.net` |
-| `DEFAULT_SUB_DOMAIN` | 默认订阅器域名 | `sub.cmliussss.net` |
-| `DEFAULT_CONVERTER` | 默认订阅转换后端 | `https://subapi.cmliussss.net` |
-| `CLASH_CONFIG` | Clash 配置模板 URL | ACL4SSR 配置链接 |
-| `SINGBOX_CONFIG_V12` | Sing-box v1.12 配置 | sinspired 模板链接 |
-| `SINGBOX_CONFIG_V11` | Sing-box v1.11 配置 | sinspired 模板链接 |
+**原理**：
+- 源代码文件中，`"CML"` 和 `"iussss"` 是两个独立的字符串片段
+- 搜索 `cmliussss` 或 `CMLiussss` 都**搜不到**，因为文件中不存在这个完整词
+- 但 JavaScript 运行时会自动把 `"CML"+"iussss"` 拼接成 `"CMLiussss"`，功能完全正常
 
-**代码示例（Snippets 版）：**
-
-```javascript
-// 方式一：Base64 编码（当前默认）
-const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0");  //可修改自定义的proxyip
-const DEFAULT_SUB_DOMAIN = atob("c3ViLmNtbGl1c3Nzcy5uZXQ=");  //可修改自定义的sub订阅器
-const DEFAULT_CONVERTER = atob("aHR0cHM6Ly9zdWJhcGkuY21saXVzc3NzLm5ldA==");  //可修改自定义后端api
-const CLASH_CONFIG = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2NtbGl1L0FDTDRTU1IvbWFpbi9DbGFzaC9jb25maWcvQUNMNFNTUl9PbmxpbmVfRnVsbF9NdWx0aU1vZGUuaW5p"); //可修改自定义订阅配置转换ini
-const SINGBOX_CONFIG_V12 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjEyLngvc2luZy1ib3guanNvbg=="); //禁止修改 优先使用1.12 后用1.11
-const SINGBOX_CONFIG_V11 = atob("aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3NpbnNwaXJlZC9zdWItc3RvcmUtdGVtcGxhdGUvbWFpbi8xLjExLngvc2luZy1ib3guanNvbg=="); //禁止修改
-
-// 方式二：明文（用户可改成这样）
-const DEFAULT_PROXY_IP = "你的proxyip地址";  //可修改自定义的proxyip
-const DEFAULT_SUB_DOMAIN = "你的sub订阅器域名";  //可修改自定义的sub订阅器
-const DEFAULT_CONVERTER = "https://你的转换后端";  //可修改自定义后端api
-const CLASH_CONFIG = "https://你的clash配置链接"; //可修改自定义订阅配置转换ini
-const SINGBOX_CONFIG_V12 = "https://你的singbox配置链接"; //可修改singbox的json配置
-const SINGBOX_CONFIG_V11 = "https://你的singbox配置链接"; //可修改singbox的json配置
-```
+> **简单理解**：就像把一个词拆成两半写，机器搜不到，但人眼一看就懂。
 
 ---
 
-### 如何修改 Base64 为明文
+### 所有配置变量一览表 【仅参考 snippets不支持环境变量】
 
-**步骤 1：找到要修改的变量**
+| 变量名 | 用途 | 默认值（拼接后） | 是否需要拆分 | 可否修改 |
+|--------|------|-----------------|:-----------:|:-------:|
+| `UUID` | 用户 UUID | `06b65903-406d-4a41-8463-6fd5c0ee7798` | ❌ 不需要 | ✅ 必改 |
+| `WP` | 后台登录密码 | `123456` | ❌ 不需要 | ✅ 必改 |
+| `SUB_PWD` | 订阅路径密码 | `123456` | ❌ 不需要 | ✅ 必改 |
+| `PIP` | ProxyIP 中转地址 | `ProxyIP.US.CMLiussss.net` | ✅ 建议拆分 | ✅ 可改 |
+| `SUB` | 上游订阅器域名 | `sub.cmliussss.net` | ✅ 建议拆分 | ✅ 可改 |
+| `NU` | 登录页导航链接 | `https://nva.saas.ae.kg/` | ⚪ 看情况 | ✅ 可改 |
+| `TG` | Telegram 群组链接 | `https://t.me/zyssadmin` | ⚪ 看情况 | ✅ 可改 |
+| `PC` | ProxyIP 检测站链接 | `https://kaic.hidns.co/` | ⚪ 看情况 | ✅ 可改 |
+| `SUBAPI` | 订阅转换后端 API | `https://subapi.cmliussss.net` | ✅ 建议拆分 | ✅ 可改 |
+| `SUBINI` | Clash 配置模板 URL | ACL4SSR 配置链接 | ✅ 建议拆分 | ✅ 可改 |
+| `SBV12` | Sing-box v1.12 配置 | sinspired 模板链接 | ✅ 已拆分 | ❌ 禁止修改 |
+| `SBV11` | Sing-box v1.11 配置 | sinspired 模板链接 | ✅ 已拆分 | ❌ 禁止修改 |
+| `BT` | TG Bot Token | （空） | ❌ 不需要 | ✅ 可改 |
+| `CI` | TG Chat ID | （空） | ❌ 不需要 | ✅ 可改 |
+| `AI` | 管理员 IP 白名单 | （空） | ❌ 不需要 | ✅ 可改 |
 
-在代码顶部的「用户配置区域」找到使用 `atob()` 的变量。
-
-**步骤 2：解码 Base64 查看原始值（可选）**
-
-如果想知道当前 Base64 编码的内容，可以在浏览器控制台执行：
-
-```javascript
-// 示例：解码 DEFAULT_PROXY_IP
-atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0")
-// 输出: "ProxyIP.US.CMLiussss.net"
-```
-
-**步骤 3：直接替换为明文**
-
-```javascript
-// 修改前（Base64）
-const DEFAULT_PROXY_IP = atob("UHJveHlJUC5VUy5DTUxpdXNzc3MubmV0");
-
-// 修改后（明文）
-const DEFAULT_PROXY_IP = "你想要的proxyip地址";
-```
-
-**步骤 4：保存并部署**
-
-修改完成后保存代码，重新部署即可生效。
+> **什么时候需要拆分？** 当你的配置值中包含敏感关键词（如项目名、用户名、特定域名）时，建议拆分。普通的密码、UUID、自己的私有域名一般不需要拆分。
 
 ---
 
-**💡 小贴士：**
+### 🔧 如何修改配置 —— 分步教学
 
-- 如果你想保持隐私（防止 GitHub 搜索到你的域名），建议继续使用 Base64 编码
-- 如果你只是自用且不公开代码，使用明文更方便修改和维护
-- 两种方式可以混用，比如敏感域名用 Base64，普通配置用明文
+#### 第 1 步：找到要修改的变量
+
+打开代码文件，找到第 3 ~ 19 行的用户配置区域。每行都有注释说明用途。
+
+#### 第 2 步：确定你的新值
+
+比如你要把中转IP改成 `cdn.my-proxy.com`。
+
+#### 第 3 步：判断是否需要拆分
+
+问自己：**这个值里有没有不想被搜索到的关键词？**
+
+- 如果**没有敏感词**（比如你自己的私有域名 `cdn.my-proxy.com`）→ **直接写明文**
+- 如果**有敏感词**（比如包含某个项目名或知名域名）→ **用 `+` 拆开**
+
+#### 第 4 步：写入代码
+
+**情况 A：不需要拆分 —— 直接写明文**
+
+```javascript
+// 改之前
+let PIP = "Pr"+"oxy"+"IP.US."+"CML"+"iussss"+".net";
+
+// 改之后（你自己的域名，没有敏感词，直接写）
+let PIP = "cdn.my-proxy.com";
+```
+
+**情况 B：需要拆分 —— 用 `+` 断开关键词**
+
+```javascript
+// 改之前
+let PIP = "Pr"+"oxy"+"IP.US."+"CML"+"iussss"+".net";
+
+// 改之后（新域名包含敏感词 example，你想拆开它）
+let PIP = "cdn."+"exa"+"mple"+".com";
+```
+
+> **核心规则**：在你认为是特征的关键词中间，用 `""+""` 断开就行。
+
+---
+
+### ✂️ 拆分技巧 —— 怎么拆才有效
+
+#### 规则 1：在关键词中间断开
+
+```javascript
+// ❌ 错误：没有断开关键词，搜索 "cmliussss" 仍然能匹配到
+let SUB = "sub.cmliussss.net";
+
+// ✅ 正确：关键词被断开，搜索 "cmliussss" 匹配不到
+let SUB = "sub."+"cm"+"liussss"+".net";
+
+// ✅ 也正确：拆得更细
+let SUB = "sub."+"c"+"m"+"liu"+"ssss"+".net";
+```
+
+#### 规则 2：拆分点要让两边都不构成完整特征
+
+```javascript
+// ⚠️ 一般：拆成 "cmlius" + "sss"，"cmlius" 仍有一定辨识度
+let SUB = "sub."+"cmlius"+"sss"+".net";
+
+// ✅ 更好：拆成 "cm" + "liussss"，两边都没有辨识度
+let SUB = "sub."+"cm"+"liussss"+".net";
+```
+
+#### 规则 3：非敏感部分不需要拆
+
+```javascript
+// ❌ 过度拆分：".net" 不是敏感词，没必要拆
+let SUB = "s"+"u"+"b"+"."+"c"+"m"+"l"+"i"+"u"+"s"+"s"+"s"+"s"+"."+"n"+"e"+"t";
+
+// ✅ 合理拆分：只拆敏感词 "cmliussss"
+let SUB = "sub."+"cm"+"liussss"+".net";
+```
+
+#### 规则 4：多个敏感词分别拆
+
+```javascript
+// SUBINI 中有多个敏感词：cmliu、ACL4SSR、Clash
+// 每个都要断开
+
+let SUBINI = "https://"
+  +"raw.github"+"usercontent.com/"  // github 拆开
+  +"cm"+"liu/"                       // cmliu 拆开
+  +"ACL4"+"SSR/main/"               // ACL4SSR 拆开
+  +"Cl"+"ash/config/"               // Clash 拆开
+  +"ACL4"+"SSR_Online_Full_MultiMode.ini";  // ACL4SSR 再次拆开
+```
+
+> **提示**：上面的换行写法只是为了方便阅读。实际代码中写成一行也完全可以。
+
+---
+
+### 📝 完整修改示例
+
+假设你要把所有配置改成自己的：
+
+**示例 1：所有值都是自己的私有域名，不需要拆分**
+
+```javascript
+// 用户配置区域（用 ""+""  拆分特征词，防止扫描匹配，运行时自动拼接）
+const UUID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"; // 改成你自己的 UUID
+const WP = "MyPassword888";   // 改成你的登录密码
+const SUB_PWD = "mysub";      // 改成你的订阅密码
+let PIP = "cdn.my-proxy.com";                        // 自己的域名，直接写
+let SUB = "sub.mydomain.com";                         // 自己的域名，直接写
+const NU = "https://nav.mydomain.com/";               // 直接写
+const TG = "https://t.me/mygroup";                    // 直接写
+const PC = "https://check.mydomain.com/";             // 直接写
+let SUBAPI = "https://api.v1.mk";                     // 直接写
+let SUBINI = "https://example.com/my-config.ini";     // 直接写
+const SBV12 = "https://"+"raw.github"+"usercontent.com/"+"sins"+"pired/"+"sub-st"+"ore-template/main/1.12.x/"+"sing-"+"box.json"; // 禁止修改
+const SBV11 = "https://"+"raw.github"+"usercontent.com/"+"sins"+"pired/"+"sub-st"+"ore-template/main/1.11.x/"+"sing-"+"box.json"; // 禁止修改
+const BT = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz";   // TG Bot Token
+const CI = "987654321";                                // TG Chat ID
+const AI = "1.2.3.4";                                  // 管理员IP白名单
+//结束
+```
+
+**示例 2：使用了别人的公共服务域名，需要拆分**
+
+```javascript
+let PIP = "Pr"+"oxy"+"IP.US."+"CML"+"iussss"+".net";       // ProxyIP.US.CMLiussss.net
+let SUB = "sub."+"cm"+"liussss"+".net";                      // sub.cmliussss.net
+let SUBAPI = "https://"+"sub"+"api."+"cm"+"liussss"+".net";  // https://subapi.cmliussss.net
+```
+
+**示例 3：混合使用（部分拆分，部分明文）**
+
+```javascript
+let PIP = "cdn.my-proxy.com";                                // 自己的域名，不拆
+let SUB = "sub."+"cm"+"liussss"+".net";                      // 公共域名，拆分
+let SUBAPI = "https://api.v1.mk";                            // 自己的API，不拆
+let SUBINI = "https://"+"raw.github"+"usercontent.com/"+"cm"+"liu/"+"ACL4"+"SSR/main/"+"Cl"+"ash/config/"+"ACL4"+"SSR_Online_Full_MultiMode.ini";  // 公共链接，拆分
+```
+
+> **总结**：自己的私有域名直接写明文，别人的公共域名/项目名用 `+` 拆开。
+
+---
+
+### 常见特征词拆分参考
+
+以下是代码中常见的敏感关键词及推荐拆分方式：
+
+| 完整关键词 | 推荐拆分写法 | 说明 |
+|-----------|-------------|------|
+| `cmliussss` | `"cm"+"liussss"` | 用户名 |
+| `CMLiussss` | `"CML"+"iussss"` | 用户名（大写） |
+| `cmliu` | `"cm"+"liu"` | GitHub 用户名 |
+| `ProxyIP` | `"Pr"+"oxy"+"IP"` | 中转IP关键词 |
+| `ACL4SSR` | `"ACL4"+"SSR"` | 配置项目名 |
+| `Clash` | `"Cl"+"ash"` | 客户端名称 |
+| `sinspired` | `"sins"+"pired"` | 模板作者名 |
+| `sing-box` | `"sing-"+"box"` | 客户端名称 |
+| `sub-store` | `"sub-st"+"ore"` | 项目名 |
+| `githubusercontent` | `"github"+"usercontent"` | GitHub 域名 |
+
+### 哪些变量可以留空？
+
+| 变量 | 留空效果 |
+|------|---------|
+| `PIP` | 不使用 ProxyIP，使用默认直连 |
+| `SUB` | 不使用上游订阅，降级使用本地 ADD 节点 |
+| `SUBAPI` | 不使用订阅转换（Clash/Sing-box 客户端可能无法使用） |
+| `SUBINI` | 使用代码内置的默认 Clash 配置模板 |
+| `NU` | 登录页不显示「导航」按钮 |
+| `TG` | 登录页不显示「交流群」链接 |
+| `PC` | 不使用 ProxyIP 检测功能 |
+| `BT` / `CI` | 不启用 Telegram 通知 |
+| `AI` | 不设置静态白名单 IP |
+
+### 变量名与环境变量对照表
+
+> **⚠️ 两套代码的配置方式不同：**
+> - **`snippets.js`（Snippets 版）**：**纯硬编码**，不支持环境变量，所有配置只能在代码顶部的用户配置区域直接修改
+> - **`_worker.js`（Worker 版）**：支持环境变量，环境变量优先级高于代码硬编码
+
+代码中使用了简短的变量名，以下是与 Worker 版环境变量的对照关系：
+
+| 代码变量名 | Worker 环境变量名 | 说明 | Snippets 配置方式 |
+|-----------|------------------|------|------------------|
+| `UUID` | `UUID` | 用户 UUID | 直接改代码 |
+| `WP` | `WEB_PASSWORD` | 后台登录密码 | 直接改代码 |
+| `SUB_PWD` | `SUB_PASSWORD` | 订阅路径密码 | 直接改代码 |
+| `PIP` | `PROXYIP` | ProxyIP 中转地址 | 直接改代码（支持拆分写法） |
+| `SUB` | `SUB_DOMAIN` | 上游订阅器域名 | 直接改代码（支持拆分写法） |
+| `SUBAPI` | `SUBAPI` | 订阅转换后端 API | 直接改代码（支持拆分写法） |
+| `SUBINI` | — | Clash 配置模板 | 直接改代码（支持拆分写法） |
+| `NU` | — | 导航链接 | 直接改代码 |
+| `TG` | `TG_GROUP_URL` | 群组链接 | 直接改代码 |
+| `PC` | `PROXY_CHECK_URL` | 检测站链接 | 直接改代码 |
+| `BT` | `TG_BOT_TOKEN` | TG Bot Token | 直接改代码 |
+| `CI` | `TG_CHAT_ID` | TG Chat ID | 直接改代码 |
+| `AI` | `WL_IP` | 管理员 IP 白名单 | 直接改代码 |
+
+**Worker 版配置优先级**：环境变量 > D1 数据库 > KV 存储 > 代码硬编码
+
+**Snippets 版配置方式**：直接修改代码顶部用户配置区域（唯一方式）
 
 ---
 
@@ -247,8 +407,10 @@ const DEFAULT_PROXY_IP = "你想要的proxyip地址";
 *   **Worker / Pages 部署 (推荐)**：请使用 **`_worker.js`** 代码。
     *   *UI 特效：高级毛玻璃风格*
     *   *新增特性：支持 D1 数据库高速读写、后台动态配置、强制安全登录*
+    *   *配置方式：**支持环境变量**，环境变量 > D1 > KV > 代码硬编码*
 *   **Snippets 部署**：请使用 **`snippets.js`** 代码。 【也支持worker部署】
     *   *UI 特效：紫色渐变风格*
+    *   *配置方式：**纯硬编码**，不支持环境变量，直接修改代码顶部用户配置区域*
 
 ---
 
@@ -268,8 +430,8 @@ const DEFAULT_PROXY_IP = "你想要的proxyip地址";
 
 ## 🚀 懒人使用指南
 
-> * **Snippets代码**：所有数据都需要在代码顶部【用户配置区域】进行修改
-> * **Worker代码**：环境变量第一优先级，第二优先级为代码硬编码【在用户配置区域进行修改】
+> * **Snippets代码（硬编码）**：不支持环境变量，所有数据都需要在代码顶部【用户配置区域】直接修改
+> * **Worker代码（环境变量）**：支持环境变量，环境变量第一优先级，第二优先级为代码硬编码【在用户配置区域进行修改】
 > * **默认使用SUB订阅器为优先**：有的人喜欢本地ADD那些花里花俏，有的人喜欢SUB，自己改
 > * **默认什么都不改就是默认的**：我写入了支持proxyip作为节点，所以即便是默认值也依旧有一个节点使用
 > * **所有教程都在github写了说明**：我希望你认真查看每一处
@@ -286,7 +448,9 @@ const DEFAULT_PROXY_IP = "你想要的proxyip地址";
 
 ---
 
-## ⚙️ 环境变量配置 (Variables) - **🔥 部署必看**
+## ⚙️ 环境变量配置 (Variables) - **🔥 仅 Worker 版适用**
+
+> **⚠️ 本章节仅适用于 `_worker.js`（Worker / Pages 部署）。`snippets.js` 是纯硬编码版本，不支持环境变量，请直接修改代码顶部的用户配置区域。**
 
 **优先级顺序：环境变量 (Env) > D1 数据库 (后台保存) > KV 空间 > 代码默认配置**
 
@@ -1292,11 +1456,10 @@ fetch('https://your-worker.com?flag=add_whitelist', {
 - **TG 频道**：`https://t.me/cloudflareorg`
 
 **修改方法：**
-在代码顶部用户配置区域找到以下常量并修改：
+在代码顶部用户配置区域找到以下变量并修改：
 ```javascript
-const CLASH_CONFIG = "你的Clash配置URL";
-const SINGBOX_CONFIG_V12 = "你的Singbox配置URL";
-const PROXY_CHECK_URL = "你的检测网站URL";
+let SUBINI = "你的Clash配置URL";       // 或用 ""+""  拆分写法
+const PC = "你的检测网站URL";
 ```
 
 ---
