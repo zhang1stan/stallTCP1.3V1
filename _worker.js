@@ -2707,7 +2707,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                         <input type="text" id="hostDom" value="${host}" oninput="updateLink()">
                     </div>
                     <div class="input-block">
-                        <label>中转地址 (优选)</label>
+                        <label>中转cdn地址 (cdn访问path路径)</label>
                         <div class="input-group-row">
                             <input type="text" id="pIp" value="${proxyip}" oninput="updateLink()">
                             <!-- 👇 修改：传入 proxyCheckUrl -->
