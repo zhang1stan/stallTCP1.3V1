@@ -3160,6 +3160,9 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
 
         async function fetchIpipData() {
             setNetworkStatus('status-ipip', 'loading');
+            const titleEl = document.getElementById('ipip-title');
+            const ipEl = document.getElementById('ipip-ip');
+            const countryEl = document.getElementById('ipip-country');
             const apis = [
                 { name: 'speedtest.cn', url: 'https://api-v3.speedtest.cn/ip', parse: d => d.code === 0 && d.data ? { ip: d.data.ip, loc: (d.data.country || '') + ' ' + (d.data.city || '') } : null },
                 { name: 'ipipv.com', url: 'https://myip.ipipv.com/', parse: d => ({ ip: d.Ip, loc: (d.Country || '') + ' ' + (d.City || '') }) },
@@ -3167,70 +3170,94 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             ];
             for (const api of apis) {
                 try {
-                    const res = await fetch(api.url + '?_t=' + Date.now());
+                    const url = api.url + (api.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     const result = api.parse(data);
                     if (result && result.ip) {
-                        document.getElementById('ipip-ip').textContent = result.ip;
-                        document.getElementById('ipip-country').textContent = result.loc.trim();
-                        document.getElementById('ipip-title').textContent = '国内测试(' + api.name + ')';
+                        ipEl.textContent = result.ip;
+                        countryEl.textContent = result.loc.trim();
+                        titleEl.textContent = '国内测试(' + api.name + ')';
                         setNetworkStatus('status-ipip', 'success');
                         return;
                     }
                 } catch {}
             }
-            document.getElementById('ipip-ip').innerHTML = '<span class="error">加载失败</span>';
+            ipEl.innerHTML = '<span class="error">加载失败</span>';
+            countryEl.textContent = '';
+            titleEl.textContent = '国内测试';
             setNetworkStatus('status-ipip', 'error');
         }
-
         async function fetchEdgeOneData() {
             setNetworkStatus('status-edgeone', 'loading');
-            try {
-                const res = await fetch(atob('aHR0cHM6Ly9hcGkuaXBhcGkuY21saXVzc3NzLm5ldA=='));
-                const d = await res.json();
-                const ip = d.ip || '';
-                const loc = ((d.location?.country_code || '') + ' AS' + (d.asn?.asn || '') + ' ' + (d.asn?.org || '')).trim();
-                if (ip) {
+            const apis = [
+                {
+                    url: 'https://api.cmliussss.net/api/ipinfo?_t=' + Date.now(),
+                    parse: d => ({ ip: d.ip || '', loc: ((d.country_code || '未知') + ' ' + (d.asn || '') + ' ' + (d.as_name || '')).trim() })
+                },
+                {
+                    url: 'https://api.ipapi.is',
+                    parse: d => ({ ip: d.ip || '', loc: ((d.location?.country_code || '未知') + ' AS' + (d.asn?.asn || '') + ' ' + (d.asn?.org || '')).trim() })
+                }
+            ];
+
+            for (const api of apis) {
+                try {
+                    const res = await fetch(api.url);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const { ip, loc } = api.parse(await res.json());
+                    if (!ip) throw new Error('Missing IP');
                     document.getElementById('edgeone-ip').textContent = ip;
-                    document.getElementById('edgeone-country').textContent = loc || '';
+                    document.getElementById('edgeone-country').textContent = loc || '未知';
                     setNetworkStatus('status-edgeone', 'success');
-                } else throw new Error();
-            } catch {
-                document.getElementById('edgeone-ip').innerHTML = '<span class="error">加载失败</span>';
-                setNetworkStatus('status-edgeone', 'error');
+                    return;
+                } catch {}
             }
+
+            document.getElementById('edgeone-ip').innerHTML = '<span class="error">加载失败</span>';
+            document.getElementById('edgeone-country').textContent = '';
+            setNetworkStatus('status-edgeone', 'error');
         }
 
         async function fetchCloudFlareData() {
             setNetworkStatus('status-cf', 'loading');
+            const ipEl = document.getElementById('cf-ip');
+            const countryEl = document.getElementById('cf-country');
             try {
                 const res = await fetch('https://cf.090227.xyz/ip.json?_t=' + Date.now());
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const d = await res.json();
-                document.getElementById('cf-ip').textContent = d.ip || '未知';
-                document.getElementById('cf-country').textContent = ((d.country || '') + ' ' + (d.org || '')).trim() || '未知';
+                if (!d.ip) throw new Error('Missing IP');
+                ipEl.textContent = d.ip;
+                countryEl.textContent = ((d.country || '') + ' ' + (d.org || '')).trim() || '未知';
                 setNetworkStatus('status-cf', 'success');
             } catch {
-                document.getElementById('cf-ip').innerHTML = '<span class="error">加载失败</span>';
+                ipEl.innerHTML = '<span class="error">加载失败</span>';
+                countryEl.textContent = '';
                 setNetworkStatus('status-cf', 'error');
             }
         }
-
         async function fetchTwitterData() {
             setNetworkStatus('status-twitter', 'loading');
+            const ipEl = document.getElementById('twitter-ip');
+            const countryEl = document.getElementById('twitter-country');
             try {
                 const res = await fetch('https://help.x.com/cdn-cgi/trace?_t=' + Date.now());
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const text = await res.text();
                 const data = {};
                 text.split('\\n').forEach(line => { const [k, v] = line.split('='); if (k && v) data[k.trim()] = v.trim(); });
-                document.getElementById('twitter-ip').textContent = data.ip || '未知';
-                document.getElementById('twitter-country').textContent = ((data.loc || '') + ' ' + (data.colo || '')).trim() || '未知';
+                if (!data.ip) throw new Error('Missing IP');
+                ipEl.textContent = data.ip;
+                countryEl.textContent = ((data.loc || '') + ' ' + (data.colo || '')).trim() || '未知';
                 setNetworkStatus('status-twitter', 'success');
             } catch {
-                document.getElementById('twitter-ip').innerHTML = '<span class="error">加载失败</span>';
+                ipEl.innerHTML = '<span class="error">加载失败</span>';
+                countryEl.textContent = '';
                 setNetworkStatus('status-twitter', 'error');
             }
         }
-
         function applyNetToggles() {
             const hideIp = document.getElementById('tgHideIp').checked;
             const hideDom = document.getElementById('tgHideDom').checked;
@@ -3263,3 +3290,5 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
 </body>
 </html>`;
 }
+
+
