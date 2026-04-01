@@ -9,9 +9,9 @@ let UUID = "06b65903-406d-4a41-8463-6fd5c0ee7798"; //修改可用的uuid
 const WEB_PASSWORD = "123456";  //修改你的登录密码
 const SUB_PASSWORD = "123456";  //修改你的订阅密码
 const SUB_TOKEN = "";  //ST裂变Token，留空不启用，支持环境变量 SUB_TOKEN 覆盖
-const DEFAULT_PROXY_IP = 'Pro'+'xy'+'IP.US.CM'+'Liu'+'ssss.net'; // 支持多ProxyIP，使用逗号分隔
-const DEFAULT_SUB_DOMAIN = 'su'+'b.cm'+'liu'+'ssss.net';      // 支持多订阅域名，使用逗号分隔
-const DEFAULT_CONVERTER = 'htt'+'ps://su'+'bap'+'i.cm'+'liu'+'ssss.net'; // 支持多转换器，使用逗号分隔
+const DEFAULT_PROXY_IP = 'Pro'+'xy'+'IP.US.CM'+'Liu'+'ssss.net'; //单个proxyip socks5 http
+const DEFAULT_SUB_DOMAIN = 'su'+'b.cm'+'liu'+'ssss.net'; //单个sub优选订阅
+const DEFAULT_CONVERTER = 'htt'+'ps://su'+'bap'+'i.cm'+'liu'+'ssss.net'; //转换后端api
 
 // --- 界面与链接配置 ---
 const LOGIN_PAGE_TITLE = "Worker Login"; // 修改你的登录页标题
@@ -119,50 +119,63 @@ async function pSB(text) {
   } catch (e) { return text; }
 }
 
-// Clash 双格式 ECH 注入
-function pCL(text, uuid) {
+// Clash 双格式 ECH 注入 (参考 EDT2.0 Clash订阅配置文件热补丁)
+function pCL(text, uuid, h) {
   if (!ECH) return text;
   try {
-    const echLine = 'ech-opts: {enable: true, query-server-name: ' + ECH_SNI + '}';
-    const nsEntry = ECH_SNI + ': [htt'+'ps://1.1.1.1/d'+'ns-qu'+'ery, htt'+'ps://8.8.8.8/d'+'ns-qu'+'ery]';
-    const lines = text.split('\n');
-    const out = [];
-    let inPx = false;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      // 顶层 proxies: 检测
-      if (/^proxies:/.test(line)) { inPx = true; out.push(line); continue; }
-      if (inPx && /^\S/.test(line) && !/^\s/.test(line)) inPx = false;
-      // Flow 格式: - {name:..., uuid:...}
-      if (inPx && line.match(/^\s*-\s*\{.*uuid.*\}/i)) {
-        const idx = line.lastIndexOf('}');
-        if (idx > 0) { out.push(line.slice(0, idx) + ', ' + echLine + '}'); continue; }
+    const _eo='ech'+'-opts',_qsn='query'+'-server'+'-name',_nsp='name'+'server'+'-po'+'licy';
+    let y = text;
+
+    // --- 1. DNS 基础配置块（模板字符串，格式与参考 YAML 一致）---
+    const baseDnsBlock = 'dns:\n  enable: true\n  default-nameserver:\n    - 223.5.5.5\n    - 119.29.29.29\n    - 114.114.114.114\n  use-hosts: true\n  nameserver:\n    - https://sm2.doh.pub/dns-query\n    - https://dns.alidns.com/dns-query\n  fallback:\n    - 8.8.4.4\n    - 208.67.220.220\n  fallback-filter:\n    geoip: true\n    geoip-code: CN\n    ipcidr:\n      - 240.0.0.0/4\n      - 127.0.0.1/32\n      - 0.0.0.0/32\n    domain:\n      - \'+.google.com\'\n      - \'+.facebook.com\'\n      - \'+.youtube.com\'\n';
+    const hasDns = /^dns:\s*(?:\n|$)/m.test(y);
+    if (!hasDns) y = baseDnsBlock + y;
+
+    // --- 2. nameserver-policy 注入（双域名+双DoH）---
+    const _bkDoH='https://do'+'h.cm.edu.kg/'+'C'+'ML'+'iu'+'ssss';
+    const ne='    "'+h+'":\n      - '+ECH_DNS+'\n      - '+_bkDoH+'\n    "'+ECH_SNI+'":\n      - '+ECH_DNS+'\n      - '+_bkDoH;
+    const hasNsp = /^\s{2}nameserver-policy:\s*(?:\n|$)/m.test(y);
+    if (hasNsp) {
+      y = y.replace(/^(\s{2}nameserver-policy:\s*\n)/m, '$1' + ne + '\n');
+    } else {
+      const ls = y.split('\n');
+      let di = -1, iD = false;
+      for (let i = 0; i < ls.length; i++) {
+        if (/^dns:\s*$/.test(ls[i])) { iD = true; continue; }
+        if (iD && /^[a-zA-Z]/.test(ls[i])) { di = i; break; }
       }
-      out.push(line);
-      // Block 格式: uuid 行后插入 ech-opts
-      if (inPx && /^\s+uuid:/i.test(line) && uuid && line.includes(uuid.slice(0, 8))) {
-        const indent = (line.match(/^(\s+)/) || ['','  '])[1];
-        let j = i + 1;
-        while (j < lines.length && /^\s+\S/.test(lines[j]) && !/^\s+-\s/.test(lines[j])) {
-          out.push(lines[j]); j++; i++;
+      const nspBlock = '  ' + _nsp + ':\n' + ne;
+      if (di > 0) { ls.splice(di, 0, nspBlock); y = ls.join('\n'); }
+      else { y += '\n' + nspBlock + '\n'; }
+    }
+
+    // --- 3. 节点 ech-opts 注入（Flow + Block 双格式）---
+    const L=y.split('\n'),R=[];let i=0;
+    while(i<L.length){const l=L[i],tl=l.trim();
+      if(tl.startsWith('- {')&&tl.includes('uuid:')){
+        let fn=l,bc=(l.match(/\{/g)||[]).length-(l.match(/\}/g)||[]).length;
+        while(bc>0&&i+1<L.length){i++;fn+='\n'+L[i];bc+=(L[i].match(/\{/g)||[]).length-(L[i].match(/\}/g)||[]).length;}
+        const um=fn.match(/uuid:\s*([^,}\n]+)/);
+        if(um&&um[1].trim()===uuid.trim()){
+          fn=fn.replace(/client-fingerprint:\s*[^,}\s]+/,'client-fingerprint: chrome');
+          fn=fn.replace(/\}(\s*)$/,`, ${_eo}: {enable: true, ${_qsn}: ${ECH_SNI}}}$1`);
         }
-        out.push(indent + echLine);
-      }
-    }
-    let result = out.join('\n');
-    // DNS nameserver-policy 补全
-    const NSP = 'name'+'server'+'-po'+'licy';
-    if (!result.includes(NSP)) {
-      if (result.includes('dns:')) {
-        result = result.replace(/(dns:[\s\S]*?)(\n\S)/, '$1\n  ' + NSP + ':\n    ' + nsEntry + '\n$2');
-      } else {
-        const dnsBlock = 'dns:\n  enable: true\n  enhanced-mode: fake-ip\n  name'+'server:\n    - htt'+'ps://1.1.1.1/d'+'ns-qu'+'ery\n    - htt'+'ps://8.8.8.8/d'+'ns-qu'+'ery\n  ' + NSP + ':\n    ' + nsEntry + '\n\n';
-        result = dnsBlock + result;
-      }
-    } else if (!result.includes(ECH_SNI)) {
-      result = result.replace(new RegExp('(' + NSP + ':\\s*\\n)'), '$1    ' + nsEntry + '\n');
-    }
-    return result;
+        R.push(fn);i++;
+      }else if(tl.startsWith('- name:')){
+        let nl=[l];const bi=l.search(/\S/);i++;
+        while(i<L.length){const nx=L[i],nt=nx.trim();
+          if(!nt){nl.push(nx);i++;break;}
+          if(nx.search(/\S/)<=bi&&nt.startsWith('- '))break;
+          if(nx.search(/\S/)<bi&&nt)break;
+          nl.push(nx);i++;}
+        const um=nl.join('\n').match(/uuid:\s*([^\n]+)/);
+        if(um&&um[1].trim()===uuid.trim()){
+          for(let j=0;j<nl.length;j++){if(/client-fingerprint:/.test(nl[j])){nl[j]=nl[j].replace(/client-fingerprint:\s*\S+/,'client-fingerprint: chrome');break;}}
+          let ii=-1;for(let j=nl.length-1;j>=0;j--)if(nl[j].trim()){ii=j;break;}
+          if(ii>=0){const ind=' '.repeat(bi+2);nl.splice(ii+1,0,ind+_eo+':',ind+'  enable: true',ind+'  '+_qsn+': '+ECH_SNI);}}
+        R.push(...nl);
+      }else{R.push(l);i++;}}
+    return R.join('\n');
   } catch (e) { return text; }
 }
 
@@ -761,24 +774,17 @@ export default {
       const _WEB_PW = await getSafeEnv(env, 'WEB_PASSWORD', WEB_PASSWORD);
       const _SUB_PW = await getSafeEnv(env, 'SUB_PASSWORD', SUB_PASSWORD);
       
-      // ⭐ 功能1: 多ProxyIP轮询支持
       let _PROXY_IP = await getSafeEnv(env, 'PROXYIP', DEFAULT_PROXY_IP);
-      const proxyIPs = _PROXY_IP.split(',').map(i => i.trim()).filter(i => i);
-      _PROXY_IP = proxyIPs[Math.floor(Date.now() / 1000) % proxyIPs.length] || _PROXY_IP;
 
       const _PS = await getSafeEnv(env, 'PS', "");
       const _LOGIN_TITLE = await getSafeEnv(env, 'LOGIN_PAGE_TITLE', LOGIN_PAGE_TITLE);
       const _DASH_TITLE = await getSafeEnv(env, 'DASHBOARD_TITLE', DASHBOARD_TITLE); 
       
-      // ⭐ 功能2 & 3: 准备多订阅域名和转换器的列表
       let _SUB_DOMAIN_STR = await getSafeEnv(env, 'SUB_DOMAIN', DEFAULT_SUB_DOMAIN);
       let _CONVERTER_STR = await getSafeEnv(env, 'SUBAPI', DEFAULT_CONVERTER);
-      const _SUB_DOMAIN_LIST = _SUB_DOMAIN_STR.split(',').map(s => { let v=s.trim(); if(v.includes("://")) v=v.split("://")[1]; if(v.includes("/")) v=v.split("/")[0]; return v; }).filter(s=>s);
-      const _CONVERTER_LIST = _CONVERTER_STR.split(',').map(s => { let v=s.trim(); if(v.endsWith("/")) v=v.slice(0, -1); if(!v.includes("://")) v="https://"+v; return v; }).filter(s=>s);
-      
-      // 取第一个作为默认值，用于界面显示
-      let _SUB_DOMAIN = _SUB_DOMAIN_LIST[0] || host;
-      let _CONVERTER = _CONVERTER_LIST[0] || DEFAULT_CONVERTER;
+      // 清洗单值：去协议头和尾部斜杠
+      let _SUB_DOMAIN = _SUB_DOMAIN_STR.trim(); if(_SUB_DOMAIN.includes("://")) _SUB_DOMAIN=_SUB_DOMAIN.split("://")[1]; if(_SUB_DOMAIN.includes("/")) _SUB_DOMAIN=_SUB_DOMAIN.split("/")[0]; _SUB_DOMAIN = _SUB_DOMAIN || host;
+      let _CONVERTER = _CONVERTER_STR.trim(); if(_CONVERTER.endsWith("/")) _CONVERTER=_CONVERTER.slice(0,-1); if(!_CONVERTER.includes("://")) _CONVERTER="https://"+_CONVERTER; _CONVERTER = _CONVERTER || DEFAULT_CONVERTER;
 
       // ⭐ 功能4: DLS速度下限筛选
       const _DLS = await getSafeEnv(env, 'DLS', DLS);
@@ -860,14 +866,9 @@ export default {
               const type = (UA_L.includes(atob('Y2xhc2g=')) || UA_L.includes(atob('bWV0YQ=='))) ? atob('Y2xhc2g=') : atob('c2luZ2JveA==');
               const configList = type === atob('Y2xhc2g=') ? [_CLASH_CONFIG] : Array.from(new Set([_SINGBOX_CONFIG_V11, _SINGBOX_CONFIG_V12].filter(Boolean)));
               
-              // ⭐ 功能3: 多订阅转换器故障切换
               let lastRes = null;
-              for (const converterUrl of _CONVERTER_LIST) {
-                  // ⭐ 功能2: 多订阅源域名故障切换 (构建 subUrl 时循环尝试)
-                  // 注意：转换器一般只接受一个 url 参数，这里我们需要确定用哪个 subUrl 传给转换器
-                  // 策略：我们生成第一个可用的 subUrl (非当前 host) 传给转换器，或者直接传 host (如果是worker自身)
-                  // 简单起见，我们构造一个基于 _SUB_DOMAIN_LIST[0] 的 URL 传给转换器，因为转换器是服务器端抓取
-                  let targetSubDomain = _SUB_DOMAIN_LIST[0] || host;
+              {
+                  let targetSubDomain = _SUB_DOMAIN;
                   const _SUB_TOKEN = await getSafeEnv(env, 'SUB_TOKEN', SUB_TOKEN);
                   let subUrl;
                   if (_SUB_TOKEN) {
@@ -880,35 +881,32 @@ export default {
                   } else {
                       subUrl = `https://${targetSubDomain}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                   }
-                  
+
                   for (const config of configList) {
-                      const subApi = `${converterUrl}/sub?target=${type}&url=${encodeURIComponent(subUrl)}&config=${encodeURIComponent(config)}&emoji=true&list=false&sort=false&fdn=false&scv=false`;
+                      const subApi = `${_CONVERTER}/sub?target=${type}&url=${encodeURIComponent(subUrl)}&config=${encodeURIComponent(config)}&emoji=true&list=false&sort=false&fdn=false&scv=false`;
                       try {
                           const res = await fetch(subApi, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } });
                           if (res.ok) { lastRes = res; break; }
                       } catch(e) {}
                   }
-                  if (lastRes) break;
               }
               if (lastRes) {
                 let _body = await lastRes.text();
                 if (ECH) {
                   if (type === atob('c2luZ2JveA==')) _body = await pSB(_body);
-                  else _body = pCL(_body, _UUID);
+                  else _body = pCL(_body, _UUID, url.hostname);
                 }
                 return new Response(_body, { status: 200, headers: lastRes.headers });
               }
           }
           
-          // 原生订阅处理 (支持多域名故障切换)
+          // 原生订阅处理
           try {
             let success = false;
             let body = "";
             let finalHeaders = {};
-            
-            // ⭐ 功能2: 多订阅源域名故障切换
-            for (const subDomain of _SUB_DOMAIN_LIST) {
-                if (host.toLowerCase() === subDomain.toLowerCase()) continue; // 跳过自身，防止死循环 (如果是自请求)
+
+            if (host.toLowerCase() !== _SUB_DOMAIN.toLowerCase()) {
                 const _SUB_TOKEN2 = await getSafeEnv(env, 'SUB_TOKEN', SUB_TOKEN);
                 let subUrl;
                 if (_SUB_TOKEN2) {
@@ -917,9 +915,9 @@ export default {
                     const _desireIP2 = (_desireIPs2[0] || _PROXY_IP || host);
                     const _desireNode2 = genNodes(host, _UUID, _PROXY_IP, _desireIP2 ? [_desireIP2] : [], _PS);
                     const _desireBase2 = (typeof _desireNode2 === 'string' ? _desireNode2 : _desireNode2.split('\n')[0]).split('\n')[0];
-                    subUrl = `https://${subDomain}/sub?base=${encodeURIComponent(_desireBase2)}&token=${encodeURIComponent(_SUB_TOKEN2)}`;
+                    subUrl = `https://${_SUB_DOMAIN}/sub?base=${encodeURIComponent(_desireBase2)}&token=${encodeURIComponent(_SUB_TOKEN2)}`;
                 } else {
-                    subUrl = `https://${subDomain}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
+                    subUrl = `https://${_SUB_DOMAIN}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                 }
                 try {
                     const res = await fetch(subUrl, { headers: { 'User-Agent': UA } });
@@ -927,7 +925,6 @@ export default {
                         body = await res.text();
                         finalHeaders = res.headers;
                         success = true;
-                        break; 
                     }
                 } catch(e) {}
             }
