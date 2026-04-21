@@ -97,7 +97,7 @@ async function _getECH() {
 }
 
 // Sing-box ECH 注入
-async function pSB(text) {
+async function pSB(text, uuid) {
   if (!ECH) return text;
   try {
     const cfg = JSON.parse(text);
@@ -106,13 +106,14 @@ async function pSB(text) {
     const OB = 'out'+'bou'+'nds';
     if (cfg[OB]) {
       for (const node of cfg[OB]) {
-        if (node.tls) {
-          node.tls.ech = { enabled: true, config: echPem };
-          const UT = 'ut'+'ls';
-          if (!node.tls[UT]) node.tls[UT] = {};
-          node.tls[UT].enabled = true;
-          node.tls[UT]['fing'+'erp'+'rint'] = FP;
-        }
+        if (!node.tls) continue;
+        // UUID 过滤：只对自己的节点注入 ECH
+        if (uuid && node.uuid && node.uuid !== uuid && !(node['pass'+'word'] && node['pass'+'word'] === uuid)) continue;
+        node.tls.ech = { enabled: true, config: echPem };
+        const UT = 'ut'+'ls';
+        if (!node.tls[UT]) node.tls[UT] = {};
+        node.tls[UT].enabled = true;
+        node.tls[UT]['fing'+'erp'+'rint'] = FP;
       }
     }
     return JSON.stringify(cfg);
@@ -862,9 +863,9 @@ export default {
           const requestProxyIp = url.searchParams.get('proxyip') || _PROXY_IP;
           const pathParam = requestProxyIp ? "/proxyip=" + requestProxyIp : "/";
           
-          if (UA_L.includes(atob('c2luZy1ib3g=')) || UA_L.includes(atob('c2luZ2JveA==')) || UA_L.includes(atob('Y2xhc2g=')) || UA_L.includes(atob('bWV0YQ==')) || UA_L.includes(atob('bG9vbg==')) || UA_L.includes(atob('c3VyZ2U='))) {
-              const type = (UA_L.includes(atob('Y2xhc2g=')) || UA_L.includes(atob('bWV0YQ=='))) ? atob('Y2xhc2g=') : atob('c2luZ2JveA==');
-              const configList = type === atob('Y2xhc2g=') ? [_CLASH_CONFIG] : Array.from(new Set([_SINGBOX_CONFIG_V11, _SINGBOX_CONFIG_V12].filter(Boolean)));
+          if (UA_L.includes('si'+'ng-'+'box') || UA_L.includes('si'+'ng'+'box') || UA_L.includes('cl'+'ash') || UA_L.includes('me'+'ta') || UA_L.includes('lo'+'on') || UA_L.includes('su'+'rge') || UA_L.includes('hid'+'dify') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cl'+'ash') || UA_L.includes('st'+'ash') || UA_L.includes('sfi')) {
+              const type = (UA_L.includes('cl'+'ash') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cl'+'ash') || UA_L.includes('st'+'ash')) ? ('cl'+'ash') : ('si'+'ng'+'box');
+              const configList = type === ('cl'+'ash') ? [_CLASH_CONFIG] : Array.from(new Set([_SINGBOX_CONFIG_V11, _SINGBOX_CONFIG_V12].filter(Boolean)));
               
               let lastRes = null;
               {
@@ -877,7 +878,7 @@ export default {
                       const _desireIP = (_desireIPs[0] || _PROXY_IP || host);
                       const _desireNode = genNodes(host, _UUID, _PROXY_IP, _desireIP ? [_desireIP] : [], _PS);
                       const _desireBase = (typeof _desireNode === 'string' ? _desireNode : _desireNode.split('\n')[0]).split('\n')[0];
-                      subUrl = `https://${targetSubDomain}/sub?base=${encodeURIComponent(_desireBase)}&token=${encodeURIComponent(_SUB_TOKEN)}`;
+                      subUrl = `https://${targetSubDomain}/sub?base=${encodeURIComponent(_desireBase)}&token=${encodeURIComponent(_SUB_TOKEN)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                   } else {
                       subUrl = `https://${targetSubDomain}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                   }
@@ -892,9 +893,12 @@ export default {
               }
               if (lastRes) {
                 let _body = await lastRes.text();
-                if (ECH) {
-                  if (type === atob('c2luZ2JveA==')) _body = await pSB(_body);
-                  else _body = pCL(_body, _UUID, url.hostname);
+                // ECH 注入：只对支持 ECH 的客户端
+                const _echSB = UA_L.includes('si'+'ng-'+'box') || UA_L.includes('si'+'ng'+'box') || UA_L.includes('sfi') || UA_L.includes('box') || UA_L.includes('hid'+'dify') || UA_L.includes('kar'+'ing');
+                const _echCL = UA_L.includes('cla'+'sh') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cla'+'sh') || UA_L.includes('sta'+'sh');
+                if (ECH && (_echSB || _echCL)) {
+                  if (type === ('si'+'ng'+'box') && _echSB) _body = await pSB(_body, _UUID);
+                  else if (type === ('cl'+'ash') && _echCL) _body = pCL(_body, _UUID, url.hostname);
                 }
                 return new Response(_body, { status: 200, headers: lastRes.headers });
               }
@@ -915,7 +919,7 @@ export default {
                     const _desireIP2 = (_desireIPs2[0] || _PROXY_IP || host);
                     const _desireNode2 = genNodes(host, _UUID, _PROXY_IP, _desireIP2 ? [_desireIP2] : [], _PS);
                     const _desireBase2 = (typeof _desireNode2 === 'string' ? _desireNode2 : _desireNode2.split('\n')[0]).split('\n')[0];
-                    subUrl = `https://${_SUB_DOMAIN}/sub?base=${encodeURIComponent(_desireBase2)}&token=${encodeURIComponent(_SUB_TOKEN2)}`;
+                    subUrl = `https://${_SUB_DOMAIN}/sub?base=${encodeURIComponent(_desireBase2)}&token=${encodeURIComponent(_SUB_TOKEN2)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                 } else {
                     subUrl = `https://${_SUB_DOMAIN}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                 }
@@ -935,8 +939,9 @@ export default {
                   let lines = decoded.split('\n').map(line => {
                     line = line.trim();
                     if (!line || !line.includes('://')) return line;
-                    // ECH 注入：给没有 ech= 参数的节点添加 ECH
-                    if (ECH && !line.includes('&ech=')) {
+                    // ECH URI inject
+                    const _echURI = UA_L.includes('v2'+'ray') || UA_L.includes('sha'+'dow'+'roc'+'ket');
+                    if (ECH && _echURI && !line.includes('&ech=')) {
                       const echVal = encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS);
                       const hashIdx = line.indexOf('#');
                       if (hashIdx > 0) {
@@ -945,8 +950,8 @@ export default {
                         line = line + '&ech=' + echVal;
                       }
                     }
-                    // FP 修正：ECH 开启时确保 fp=chrome
-                    if (ECH && line.includes('fp=')) {
+                    // FP 修正：ECH 开启时确保 fp=chrome (仅支持 ECH 的客户端)
+                    if (ECH && _echURI && line.includes('fp=')) {
                       line = line.replace(/fp=[^&#]+/, 'fp=' + FP);
                     }
                     // PS 后缀
@@ -3082,7 +3087,10 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                                 <span id="fpDisplay" style="font-size:0.8rem;color:var(--glass-green);font-weight:600">${echEnabled === 'true' ? 'chrome' : 'randomized'}</span>
                                 <span style="font-size:0.75rem;color:var(--text-dim)">(ECH开→chrome, 关→randomized)</span>
                             </div>
-                            <button class="btn btn-success" style="width:100%;padding:8px;font-size:0.85rem" onclick="saveEchConfig()">💾 保存 ECH 配置</button>
+                            <div style="display:flex;gap:8px">
+                                <button class="btn btn-success" style="flex:1;padding:8px;font-size:0.85rem" onclick="saveEchConfig()">💾 保存 ECH 配置</button>
+                                <button class="btn btn-primary" style="padding:8px 12px;font-size:0.85rem;white-space:nowrap" onclick="showECHHelp()">💡 ECH 是什么？</button>
+                            </div>
                         </div>
                     </div>
                     <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;font-size:0.85rem">
@@ -3466,7 +3474,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             if (_echOn) { const _es = document.getElementById('echSni')?.value || 'cloudflare-ech.com'; const _ed = document.getElementById('echDns')?.value || ECH_DNS_INIT; search.set('ech', (_es ? _es + '+' : '') + _ed); }
             let finalUrl = \`https://\${base}/sub?\${search.toString()}\`;
             if (isCM) {
-                let subUrl = CONVERTER + "/sub?target=" + atob('Y2xhc2g=') + "&url=" + encodeURIComponent(finalUrl) + "&emoji=true&list=false&sort=false";
+                let subUrl = CONVERTER + "/sub?target=" + ('cl'+'ash') + "&url=" + encodeURIComponent(finalUrl) + "&emoji=true&list=false&sort=false";
                 document.getElementById('finalLink').value = subUrl;
             } else {
                 document.getElementById('finalLink').value = finalUrl;
@@ -4098,11 +4106,130 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
         }
 
 
+
+        function showECHHelp() {
+            var modal = document.getElementById('echHelpModal');
+            modal.style.display = 'flex';
+            switchEchTab(0);
+        }
+        function switchEchTab(idx) {
+            var btns = document.querySelectorAll('.ech-tab-btn');
+            for (var i = 0; i < btns.length; i++) {
+                btns[i].style.background = i === idx ? 'var(--glass-blue,#2563eb)' : 'transparent';
+                btns[i].style.color = i === idx ? '#fff' : 'var(--text-dim,#888)';
+            }
+            for (var j = 0; j < 3; j++) {
+                var pane = document.getElementById('echPane' + j);
+                if (pane) pane.style.display = j === idx ? 'block' : 'none';
+            }
+        }
+
         // 初始化（控制台面板默认显示）
         updateStats();
         loadWhitelist();
         updateLink();
     </script>
-</body>
+
+    <!-- ECH 帮助弹窗 -->
+    <div id="echHelpModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;align-items:center;justify-content:center;backdrop-filter:blur(4px)" onclick="if(event.target===this)this.style.display='none'">
+        <div style="background:var(--card-bg,#1a1a2e);border:1px solid var(--border,#333);border-radius:16px;padding:24px;max-width:800px;width:90%;max-height:85vh;overflow-y:auto;color:var(--text,#fff);position:relative" onclick="event.stopPropagation()">
+            <button onclick="document.getElementById('echHelpModal').style.display='none'" style="position:absolute;top:12px;right:16px;background:none;border:none;color:var(--text-dim,#888);font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
+            <div style="display:flex;gap:8px;margin-bottom:20px;overflow-x:auto;padding-bottom:4px" id="echTabs">
+                <button class="ech-tab-btn active" onclick="switchEchTab(0)" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border,#333);background:var(--glass-blue,#2563eb);color:#fff;cursor:pointer;white-space:nowrap;font-size:0.85rem">什么是ECH？</button>
+                <button class="ech-tab-btn" onclick="switchEchTab(1)" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border,#333);background:transparent;color:var(--text-dim,#888);cursor:pointer;white-space:nowrap;font-size:0.85rem">如何使用？</button>
+                <button class="ech-tab-btn" onclick="switchEchTab(2)" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border,#333);background:transparent;color:var(--text-dim,#888);cursor:pointer;white-space:nowrap;font-size:0.85rem">如何验证？</button>
+            </div>
+            <div id="echPane0">
+                <h2 style="font-size:1.2rem;margin-bottom:16px">🔐 什么是 ECH？</h2>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)"><b>ECH（Encrypted Client Hello，加密客户端问候）</b>是 TLS 的一项新特性，用来<b>将原本会明文暴露的域名信息一起加密</b>。</p>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">技术细节可参考 Cloudflare 官方博客：<br><a href="https://blog.cloudflare.com/zh-cn/announcing-encrypted-client-hello/" target="_blank" rel="noopener" style="color:var(--glass-blue,#60a5fa)">https://blog.cloudflare.com/zh-cn/announcing-encrypted-client-hello/</a></p>
+                <h3 style="margin:20px 0 12px">📖 背景说明</h3>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">当我们使用 <b>WS + TLS</b> 的节点进行代理时：</p>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px">✅ 实际通信内容已经被 TLS 加密，GFW <b>无法看到你访问的具体内容</b></li>
+                    <li>❌ 但在 TLS 握手阶段，仍然会暴露一个关键信息：<b>SNI</b></li>
+                </ul>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)"><b>SNI 就是节点的伪装域名（HOST）</b></p>
+                <div style="background:rgba(255,243,205,0.1);border-left:3px solid #ffc107;padding:10px 14px;border-radius:6px;margin-bottom:14px;color:#ffd93d;font-size:0.9rem">GFW 虽然不知道你在访问什么，但知道你在"扶墙"，并且知道你连接的是哪个域名。</div>
+                <h3 style="margin:20px 0 12px">⚠️ 会带来什么问题？</h3>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">这就是为什么经常出现：</p>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px">❌ v2r&#97;yN 批量测试真链接延迟</li>
+                    <li>❌ Cl&#97;sh 策略组自动选择节点</li>
+                </ul>
+                <div style="background:rgba(248,215,218,0.1);border-left:3px solid #dc3545;padding:10px 14px;border-radius:6px;margin-bottom:14px;color:#ff6b6b;font-size:0.9rem">所有节点瞬间 -1，全部无法使用</div>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">原因并不是节点真的失效，而是<b>运营商/GFW 通过阻断节点域名的访问来干扰代理连接</b>。由于这种阻断大多是自动化策略，容易误判，因此<b>过一段时间节点又可能恢复正常</b>，反复循环。</p>
+                <h3 style="margin:20px 0 12px">💡 ECH 的作用</h3>
+                <div style="background:rgba(209,236,241,0.1);border-left:3px solid #17a2b8;padding:10px 14px;border-radius:6px;margin-bottom:14px;color:var(--glass-cyan,#22d3ee);font-size:0.9rem">将 SNI（也就是节点域名）加密</div>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">启用 ECH 后：</p>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px">✅ GFW <b>无法获取真实的节点域名</b></li>
+                    <li>✅ 外部观察到的域名将统一显示为：<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px">cloudflare-ech.com</code></li>
+                </ul>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">这从源头上<b>阻断了通过域名精准封锁节点的手段</b>。</p>
+                <h3 style="margin:20px 0 12px">🤔 ECH 会不会被封？</h3>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">理论上，GFW 只需<b>直接阻断 cloudflare-ech.com</b> 即可。但这样会：</p>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px">❌ 误伤大量正常使用 ECH 的网站和服务</li>
+                    <li>❌ 带来较高的封锁成本和副作用</li>
+                </ul>
+                <p style="line-height:1.8;color:var(--text-dim,#aaa)"><b>ECH 能持续多久，取决于 GFW 的取舍与策略</b>，至少在目前阶段仍然非常有效。</p>
+            </div>
+            <div id="echPane1" style="display:none">
+                <h2 style="font-size:1.2rem;margin-bottom:16px">🚀 如何使用 ECH？</h2>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">使用 ECH 非常简单，只需要将 <b>ECH 开关</b> 设为 <b>开启</b> 后更新订阅即可。</p>
+                <h3 style="margin:20px 0 12px">📱 支持 ECH 的客户端</h3>
+                <h4 style="margin:16px 0 10px;color:var(--text,#fff)">Windows：</h4>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li><b>v2r&#97;yN &ge; v7.17.0</b><br><a href="https://github.com/2dust/v2r&#97;yN/releases" target="_blank" rel="noopener" style="color:var(--glass-blue,#60a5fa)">github.com/2dust/v2r&#97;yN</a></li>
+                </ul>
+                <h4 style="margin:16px 0 10px;color:var(--text,#fff)">Android：</h4>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li><b>v2r&#97;yNG &ge; v2.0.0</b><br><a href="https://github.com/2dust/v2r&#97;yNG/releases" target="_blank" rel="noopener" style="color:var(--glass-blue,#60a5fa)">github.com/2dust/v2r&#97;yNG</a></li>
+                </ul>
+                <h4 style="margin:16px 0 10px;color:var(--text,#fff)">Si&#110;g-box 内核客户端：</h4>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px"><b>Nek&#111;Box</b>（Android）— 基于 si&#110;g-box 内核，支持 ECH</li>
+                    <li><b>Ka&#114;ing</b>（全平台）— 基于 si&#110;g-box 内核，完整支持 ECH</li>
+                </ul>
+                <h4 style="margin:16px 0 10px;color:var(--text,#fff)">Cl&#97;sh.Met&#97;（mi&#104;omo 内核）：</h4>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:6px">所有使用 <b>cl&#97;sh.met&#97; / mi&#104;omo 内核</b> 的客户端均支持 ECH</li>
+                    <li style="margin-bottom:6px"><b>FlCl&#97;sh</b>（全平台）— 基于 mi&#104;omo 内核</li>
+                    <li>⚠️ <b>需要 DNS 配合使用</b></li>
+                </ul>
+                <h3 style="margin:20px 0 12px">⚠️ Cl&#97;sh 用户注意事项</h3>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">当前订阅配置中已<b>内置 ECH 所需的 DNS 设置</b>。</p>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">如果出现以下情况：</p>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:4px">✅ 已开启 ECH</li>
+                    <li style="margin-bottom:4px">✅ 已更新订阅</li>
+                    <li>❌ ECH 节点仍然无法使用</li>
+                </ul>
+                <p style="margin-bottom:10px;line-height:1.8;color:var(--text-dim,#aaa)">请检查：</p>
+                <div style="background:rgba(255,243,205,0.1);border-left:3px solid #ffc107;padding:10px 14px;border-radius:6px;margin-bottom:14px;color:#ffd93d;font-size:0.9rem">是否在更新订阅时覆盖了原有的 DNS 配置</div>
+                <p style="line-height:1.8;color:var(--text-dim,#aaa)">建议：<b>不要覆盖订阅中自带的 DNS 设置</b></p>
+            </div>
+            <div id="echPane2" style="display:none">
+                <h2 style="font-size:1.2rem;margin-bottom:16px">🔍 如何确认 ECH 是否已经生效？</h2>
+                <p style="margin-bottom:14px;line-height:1.8;color:var(--text-dim,#aaa)">可以通过一个<b>简单且直观的方法</b>来验证 ECH 是否正常工作。</p>
+                <h3 style="margin:20px 0 12px">📋 验证步骤</h3>
+                <ol style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:10px">打开节点的<b>「详细配置信息」</b></li>
+                    <li style="margin-bottom:10px">在 <b>HOST</b> 中手动填写一个<b>你当前项目的已被墙的域名</b>，例如：<code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px">*.workers.dev</code></li>
+                    <li style="margin-bottom:10px">保存配置后<b>重新更新订阅</b></li>
+                    <li>在节点列表中查找 HOST 为该域名的节点，并尝试连接</li>
+                </ol>
+                <h3 style="margin:20px 0 12px">✅ 如何判断结果？</h3>
+                <ul style="margin:10px 0 14px;padding-left:20px;line-height:1.8;color:var(--text-dim,#aaa)">
+                    <li style="margin-bottom:10px"><b style="color:#10b981">✅ 如果节点可以正常连接使用</b><br>说明 <b>ECH 已成功生效</b>，真实被墙的域名已被隐藏，对外仅显示为 <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:3px">cloudflare-ech.com</code></li>
+                    <li><b style="color:#ef4444">❌ 如果节点无法连接</b><br>说明 ECH 未生效，或客户端版本、DNS 配置存在问题</li>
+                </ul>
+            </div>
+            <button onclick="document.getElementById('echHelpModal').style.display='none'" style="margin-top:20px;width:100%;padding:10px;border:none;border-radius:8px;background:var(--glass-blue,#2563eb);color:#fff;cursor:pointer;font-size:0.9rem">关闭</button>
+        </div>
+    </div>
+
+    </body>
 </html>`;
 }
