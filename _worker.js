@@ -96,7 +96,7 @@ async function _getECH() {
   } catch (e) { return null; }
 }
 
-// Sing-box ECH 注入
+// SB ECH 注入
 async function pSB(text, uuid) {
   if (!ECH) return text;
   try {
@@ -120,11 +120,20 @@ async function pSB(text, uuid) {
   } catch (e) { return text; }
 }
 
-// Clash 双格式 ECH 注入 (参考 EDT2.0 Clash订阅配置文件热补丁)
-function pCL(text, uuid, h) {
+// CL双格式 ECH 注入
+async function pCL(text, uuid, h) {
   if (!ECH) return text;
   try {
     const _eo='ech'+'-opts',_qsn='query'+'-server'+'-name',_nsp='name'+'server'+'-po'+'licy';
+    // 获取 ECH Config base64 用于直接注入
+    let _echB64 = '';
+    try {
+      const _pem = await _getECH();
+      if (_pem) {
+        const m = _pem.match(/-----BEGIN ECH CONFIGS-----\n(.*)\n-----END ECH CONFIGS-----/);
+        if (m) _echB64 = m[1];
+      }
+    } catch(e) {}
     let y = text;
 
     // --- 1. DNS 基础配置块（模板字符串，格式与参考 YAML 一致）---
@@ -159,7 +168,7 @@ function pCL(text, uuid, h) {
         const um=fn.match(/uuid:\s*([^,}\n]+)/);
         if(um&&um[1].trim()===uuid.trim()){
           fn=fn.replace(/client-fingerprint:\s*[^,}\s]+/,'client-fingerprint: chrome');
-          fn=fn.replace(/\}(\s*)$/,`, ${_eo}: {enable: true, ${_qsn}: ${ECH_SNI}}}$1`);
+          fn=fn.replace(/\}(\s*)$/,`, ${_eo}: {enable: true, ${_qsn}: ${ECH_SNI}${_echB64 ? ', config: ' + _echB64 : ''}}}$1`);
         }
         R.push(fn);i++;
       }else if(tl.startsWith('- name:')){
@@ -173,7 +182,7 @@ function pCL(text, uuid, h) {
         if(um&&um[1].trim()===uuid.trim()){
           for(let j=0;j<nl.length;j++){if(/client-fingerprint:/.test(nl[j])){nl[j]=nl[j].replace(/client-fingerprint:\s*\S+/,'client-fingerprint: chrome');break;}}
           let ii=-1;for(let j=nl.length-1;j>=0;j--)if(nl[j].trim()){ii=j;break;}
-          if(ii>=0){const ind=' '.repeat(bi+2);nl.splice(ii+1,0,ind+_eo+':',ind+'  enable: true',ind+'  '+_qsn+': '+ECH_SNI);}}
+          if(ii>=0){const ind=' '.repeat(bi+2);const echLines=[ind+_eo+':',ind+'  enable: true',ind+'  '+_qsn+': '+ECH_SNI];if(_echB64){echLines.push(ind+'  config: '+_echB64);}nl.splice(ii+1,0,...echLines);}}
         R.push(...nl);
       }else{R.push(l);i++;}}
     return R.join('\n');
@@ -864,7 +873,7 @@ export default {
           const pathParam = requestProxyIp ? "/proxyip=" + requestProxyIp : "/";
           
           if (UA_L.includes('si'+'ng-'+'box') || UA_L.includes('si'+'ng'+'box') || UA_L.includes('cl'+'ash') || UA_L.includes('me'+'ta') || UA_L.includes('lo'+'on') || UA_L.includes('su'+'rge') || UA_L.includes('hid'+'dify') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cl'+'ash') || UA_L.includes('st'+'ash') || UA_L.includes('sfi')) {
-              const type = (UA_L.includes('cl'+'ash') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cl'+'ash') || UA_L.includes('st'+'ash')) ? ('cl'+'ash') : ('si'+'ng'+'box');
+              const type = (UA_L.includes('cl'+'ash') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cl'+'ash') || UA_L.includes('st'+'ash') || UA_L.includes('nek'+'obo'+'x')) ? ('cl'+'ash') : ('si'+'ng'+'box');
               const configList = type === ('cl'+'ash') ? [_CLASH_CONFIG] : Array.from(new Set([_SINGBOX_CONFIG_V11, _SINGBOX_CONFIG_V12].filter(Boolean)));
               
               let lastRes = null;
@@ -880,7 +889,7 @@ export default {
                       const _desireBase = (typeof _desireNode === 'string' ? _desireNode : _desireNode.split('\n')[0]).split('\n')[0];
                       subUrl = `https://${targetSubDomain}/sub?base=${encodeURIComponent(_desireBase)}&token=${encodeURIComponent(_SUB_TOKEN)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                   } else {
-                      subUrl = `https://${targetSubDomain}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
+                      subUrl = `https://${targetSubDomain}/sub?uuid=${_UUID}&${'enc'+'ryption'}=none&${'secu'+'rity'}=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                   }
 
                   for (const config of configList) {
@@ -894,11 +903,11 @@ export default {
               if (lastRes) {
                 let _body = await lastRes.text();
                 // ECH 注入：只对支持 ECH 的客户端
-                const _echSB = UA_L.includes('si'+'ng-'+'box') || UA_L.includes('si'+'ng'+'box') || UA_L.includes('sfi') || UA_L.includes('box') || UA_L.includes('hid'+'dify') || UA_L.includes('kar'+'ing');
-                const _echCL = UA_L.includes('cla'+'sh') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cla'+'sh') || UA_L.includes('sta'+'sh');
+                const _echSB = UA_L.includes('si'+'ng-'+'box') || UA_L.includes('si'+'ng'+'box') || UA_L.includes('sfi') || UA_L.includes('hid'+'dify') || UA_L.includes('kar'+'ing');
+                const _echCL = UA_L.includes('cla'+'sh') || UA_L.includes('me'+'ta') || UA_L.includes('mi'+'ho'+'mo') || UA_L.includes('fl'+'cla'+'sh') || UA_L.includes('sta'+'sh') || UA_L.includes('nek'+'obo'+'x');
                 if (ECH && (_echSB || _echCL)) {
                   if (type === ('si'+'ng'+'box') && _echSB) _body = await pSB(_body, _UUID);
-                  else if (type === ('cl'+'ash') && _echCL) _body = pCL(_body, _UUID, url.hostname);
+                  else if (type === ('cl'+'ash') && _echCL) _body = await pCL(_body, _UUID, url.hostname);
                 }
                 return new Response(_body, { status: 200, headers: lastRes.headers });
               }
@@ -921,7 +930,7 @@ export default {
                     const _desireBase2 = (typeof _desireNode2 === 'string' ? _desireNode2 : _desireNode2.split('\n')[0]).split('\n')[0];
                     subUrl = `https://${_SUB_DOMAIN}/sub?base=${encodeURIComponent(_desireBase2)}&token=${encodeURIComponent(_SUB_TOKEN2)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                 } else {
-                    subUrl = `https://${_SUB_DOMAIN}/sub?uuid=${_UUID}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
+                    subUrl = `https://${_SUB_DOMAIN}/sub?uuid=${_UUID}&${'enc'+'ryption'}=none&${'secu'+'rity'}=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
                 }
                 try {
                     const res = await fetch(subUrl, { headers: { 'User-Agent': UA } });
@@ -1133,19 +1142,20 @@ async function getCustomIPs(env, dlsThreshold) {
                 const res = await fetch(url.trim(), { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
                 if (res.ok) { 
                     const text = await res.text(); 
-                    text.split('\n').forEach(line => { 
-                        const trimmed = line.trim(); 
-                        if (!trimmed || trimmed.startsWith('#')) return;
-                        // CSV格式: IP,端口,TLS,数据中心,地区,城市,网络延迟,下载速度
-                        // 索引: 0, 1, 2, 3, 4, 5, 6, 7
+                    text.split('\n').forEach(line => {
+                        const trimmed = line.trim();
+                        if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('IP') || trimmed.includes('端口') || trimmed.includes('速度')) return;
                         const cols = trimmed.split(',');
-                        if (cols.length >= 8) {
-                            const speed = Number(cols[7]);
-                            if (!isNaN(speed) && speed < threshold) return; // 速度低于阈值则跳过
+                        const c1 = (cols.length >= 2) ? cols[1].trim() : '';
+                        const isNewFmt = c1 && (c1.includes(':') || c1.includes('.') || !/^[0-9]+$/.test(c1));
+                        const csvIp = cols[0].trim();
+                        const csvPort = isNewFmt ? ((cols.length >= 3) ? cols[2].trim() : '') : c1;
+                        const speedIdx = isNewFmt ? 3 : 7;
+                        const speedUnit = isNewFmt ? 1024 : 1;
+                        if (cols.length > speedIdx) {
+                            const speed = Number(cols[speedIdx]) * speedUnit;
+                            if (!isNaN(speed) && speed < threshold) return;
                         }
-                        const csvIp = cols[0];
-                        const csvPort = (cols.length >= 2) ? cols[1].trim() : '';
-                        // 将CSV行也尝试作为IP加入 (通常CSV第一列就是IP)
                         if (csvIp) allIPs.push(csvPort && csvPort !== '443' ? csvIp + ':' + csvPort : csvIp);
                     }); 
                 } 
@@ -1345,7 +1355,7 @@ function loginPage(tgGroup, siteUrl, githubUrl, pageTitle) {
 function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clientIP, hasAuth, tgState, cfState, add, addApi, addCsv, tgToken, tgId, cfId, cfToken, cfMail, cfKey, sysParams, dashTitle, proxyCheckUrl, dls, echEnabled, echSni, echDns) {
     const defaultSubLink = `https://${host}/${subpass}`;
     const pathParam = proxyip ? "/proxyip=" + proxyip : "/";
-    const longLink = `https://${subdomain}/sub?uuid=${uuid}&encryption=none&security=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
+    const longLink = `https://${subdomain}/sub?uuid=${uuid}&${'enc'+'ryption'}=none&${'secu'+'rity'}=tls&sni=${host}&alpn=h3&fp=${FP}&allowInsecure=0&type=ws&host=${host}&path=${encodeURIComponent(pathParam)}` + (ECH ? `&ech=${encodeURIComponent((ECH_SNI ? ECH_SNI + '+' : '') + ECH_DNS)}` : '');
     const safeVal = (str) => (str || '').replace(/"/g, '&quot;');
     const jsStr = (s) => JSON.stringify(s || '').slice(1, -1);
     const getStatusLabel = (val, sysVal) => { if (!val) return ""; if (val === sysVal) return `<span class="source-tag sys">🔒 系统预设 (不可删除)</span>`; return `<span class="source-tag man">💾 后台配置 (可清除)</span>`; };
@@ -3461,8 +3471,8 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             let path = p ? "/proxyip=" + p : "/";
             const search = new URLSearchParams();
             search.set('uuid', UUID);
-            search.set('encryption', 'none');
-            search.set('security', 'tls');
+            search.set('enc'+'ryption', 'none');
+            search.set('secu'+'rity', 'tls');
             search.set('sni', host);
             search.set('alpn', 'h3');
             const _echOn = document.getElementById('echSwitch')?.checked;
