@@ -15,7 +15,7 @@ const SBV11 = 'https://raw.githubusercontent.com/sinspired/su'+'b-st'+'ore-templ
 const AI   = "";  // 管理员IP白名单
 const ST = "";  // Desire token（填入后SUB填Desire域名走裂变模式，留空走原有逻辑）
 const ECH = true;  // ECH 开关（true=开启，false=关闭）【默认关闭】
-const ECH_DNS = 'https://do'+'h.'+'cm'+'liu'+'ssss'+'.net/'+'C'+'ML'+'iu'+'ssss';  // DoH 查询地址（CM镜像DoH）
+const ECH_DNS = 'https://do'+'h.'+'cm'+'liu'+'ssss'+'.com/'+'C'+'ML'+'iu'+'ssss';  // DoH 查询地址（CM镜像DoH）
 const ECH_SNI = 'cl'+'oudf'+'lare'+'-ech'+'.com';  // ECH 解析域名
 const FP = ECH ? 'chrome' : 'randomized';  // 指纹：ECH开→chrome，关→randomized
 //结束

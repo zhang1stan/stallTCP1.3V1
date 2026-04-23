@@ -40,7 +40,7 @@ const P_S5 = 'so'+'cks5';
 
 // ECH + 指纹伪装配置
 let ECH = true;  // ECH 开关 (支持环境变量覆盖)
-let ECH_DNS = 'htt'+'ps://doh.'+'cm'+'liussss.net/'+'CM'+'Liussss';
+let ECH_DNS = 'htt'+'ps://doh.'+'cm'+'liussss.com/'+'CM'+'Liussss';
 let ECH_SNI = 'cloudflare-ech.com';
 let FP = ECH ? 'chrome' : 'randomized';
 
